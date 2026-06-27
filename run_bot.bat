@@ -1,8 +1,6 @@
 @echo off
 cd /d "%~dp0"
-
-REM === 설정: Python 가상환경 경로 ===
-set VENV_DIR=C:\Users\Qumin\opencode_venv
+set VENV_DIR=%~dp0venv
 
 :restart
 echo [%date% %time%] StreamSaver starting...
