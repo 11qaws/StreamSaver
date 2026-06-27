@@ -4,7 +4,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 
 import config
-from cookie_manager import CookieManager
+from cookie_manager import CookieManager, IS_WINDOWS
 from downloader import DownloadManager
 from discord_bot import StreamSaverBot
 from gui import GUIManager
@@ -79,13 +79,23 @@ def main():
 
     bot = StreamSaverBot(dm, cm)
 
-    cm.cookie_valid = os.path.exists(config.COOKIE_FILE) and os.path.getsize(config.COOKIE_FILE) > 200
-    if cm.cookie_valid:
-        logger.info("Existing cookies found (%d bytes)", os.path.getsize(config.COOKIE_FILE))
+    has_cookies = (os.path.exists(config.COOKIE_FILE) and
+                   os.path.getsize(config.COOKIE_FILE) > 200)
+    if has_cookies:
+        logger.info("Cookie file found (%d bytes)", os.path.getsize(config.COOKIE_FILE))
+
+    if IS_WINDOWS:
+        cm.start_headless()
+        cm.extract_cookies()
+        cm.start_auto_refresh()
+        if cm.cookie_valid:
+            logger.info("Cookies extracted via CDP")
+        else:
+            logger.warning("No valid cookies. Use !로그인 to set up YouTube login.")
     else:
-        logger.warning("No valid cookie file found. Use !로그인 to set up YouTube login.")
-    cm.start_headless()
-    cm.start_auto_refresh()
+        cm.cookie_valid = has_cookies
+        if has_cookies:
+            logger.info("Linux mode: using existing cookies")
 
     gui.notify("StreamSaver", "봇이 시작되었습니다")
 

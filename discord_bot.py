@@ -122,8 +122,9 @@ class StreamSaverCog(commands.Cog):
     @commands.command(name="로그인")
     async def cmd_login(self, ctx):
         await ctx.send(
-            "🌐 Edge가 실행됩니다. YouTube에 로그인한 후 "
-            "**Edge를 완전히 종료**해 주세요.")
+            "🌐 Edge가 실행됩니다. YouTube에 로그인해 주세요.\n"
+            "로그인이 감지되면 자동으로 쿠키를 저장하고 "
+            "headless 모드로 전환됩니다.")
         self.cm.login_flow(on_done=lambda ok: asyncio.run_coroutine_threadsafe(
             self._login_result(ctx, ok), self.bot.loop))
 
