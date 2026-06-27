@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StreamSaver</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans KR",sans-serif;
+  background:#ffffff;color:#111827;line-height:1.6
+}
+a{color:#2563eb;text-decoration:none}
+a:hover{text-decoration:underline}
+img{max-width:100%;display:block}
+
+.container{max-width:960px;margin:0 auto;padding:0 24px}
+
+/* Header */
+header{
+  border-bottom:1px solid #e5e7eb;
+  background:#ffffff;position:sticky;top:0;z-index:10
+}
+.header-inner{
+  max-width:960px;margin:0 auto;padding:16px 24px;
+  display:flex;align-items:center;justify-content:space-between
+}
+.header-inner h1{
+  font-size:1.25rem;font-weight:700;letter-spacing:-0.02em;
+  display:flex;align-items:center;gap:8px
+}
+.header-inner h1 span{color:#2563eb}
+.stats-row{display:flex;align-items:center;gap:16px;font-size:0.875rem;color:#6b7280}
+.stats-row .num{font-weight:600;color:#111827}
+.stat-divider{width:1px;height:16px;background:#e5e7eb}
+
+/* Hero (GH Pages mode) */
+.hero{padding:80px 24px 60px;text-align:center}
+.hero h2{font-size:2rem;font-weight:700;letter-spacing:-0.03em;margin-bottom:16px}
+.hero h2 span{color:#2563eb}
+.hero p{color:#6b7280;max-width:480px;margin:0 auto 32px;font-size:1.0625rem}
+.hero-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:10px 20px;border-radius:8px;font-size:0.875rem;font-weight:500;
+  cursor:pointer;transition:all .15s ease;border:none
+}
+.btn-primary{background:#2563eb;color:#fff}
+.btn-primary:hover{background:#1d4ed8;text-decoration:none}
+.btn-secondary{background:#f3f4f6;color:#374151}
+.btn-secondary:hover{background:#e5e7eb;text-decoration:none}
+.btn-outline{
+  background:transparent;color:#6b7280;border:1px solid #e5e7eb
+}
+.btn-outline:hover{background:#f9fafb;border-color:#d1d5db;text-decoration:none}
+
+.hero-features{
+  display:flex;gap:32px;justify-content:center;flex-wrap:wrap;
+  margin-top:40px;font-size:0.875rem;color:#6b7280
+}
+.hero-features div{display:flex;align-items:center;gap:6px}
+
+/* Controls */
+.controls{
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  padding:20px 0 16px
+}
+.controls .search-wrap{
+  flex:1;min-width:200px;position:relative
+}
+.controls .search-wrap input{
+  width:100%;padding:9px 12px 9px 36px;border:1px solid #e5e7eb;
+  border-radius:8px;font-size:0.875rem;background:#f9fafb;
+  outline:none;transition:all .15s ease;color:#111827
+}
+.controls .search-wrap input:focus{
+  border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)
+}
+.controls .search-wrap .icon{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  color:#9ca3af;font-size:0.875rem;pointer-events:none
+}
+.controls select,.controls .filter-btn{
+  padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;
+  font-size:0.8125rem;background:#f9fafb;color:#374151;
+  outline:none;cursor:pointer;transition:all .15s ease;appearance:none
+}
+.controls select:focus{border-color:#2563eb}
+.controls label{
+  display:flex;align-items:center;gap:6px;
+  font-size:0.8125rem;color:#6b7280;cursor:pointer;
+  padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;
+  background:#f9fafb;transition:all .15s ease;user-select:none
+}
+.controls label:hover{border-color:#d1d5db}
+.controls label input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
+.controls label.active{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
+
+/* Info bar */
+.info-bar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;font-size:0.8125rem;color:#9ca3af;border-top:1px solid #f3f4f6
+}
+
+/* Cards */
+.cards{padding:0 0 32px}
+.card{
+  display:flex;gap:16px;padding:16px;margin-bottom:8px;
+  border-radius:12px;transition:all .15s ease;cursor:default
+}
+.card:hover{background:#f9fafb}
+.card-thumb{
+  width:168px;height:94px;border-radius:8px;overflow:hidden;
+  flex-shrink:0;background:#f3f4f6;position:relative
+}
+.card-thumb img{width:100%;height:100%;object-fit:cover}
+.card-thumb .dur{
+  position:absolute;right:4px;bottom:4px;
+  background:rgba(0,0,0,.75);color:#fff;
+  font-size:0.75rem;padding:1px 5px;border-radius:4px;font-weight:500
+}
+.card-body{flex:1;min-width:0}
+.card-title{
+  font-size:0.9375rem;font-weight:600;color:#111827;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px
+}
+.card-meta{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:0.8125rem;color:#6b7280;margin-bottom:4px
+}
+.card-meta .channel{font-weight:500;color:#374151}
+.card-meta .dot{width:3px;height:3px;border-radius:50%;background:#d1d5db}
+.card-badges{display:flex;gap:6px;margin-top:6px}
+.badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:0.6875rem;font-weight:600;padding:2px 8px;border-radius:4px;
+  letter-spacing:.01em
+}
+.badge-membership{background:#fef3c7;color:#92400e}
+.badge-gdrive{background:#d1fae5;color:#065f46}
+
+/* Empty state */
+.empty{
+  text-align:center;padding:80px 24px;color:#9ca3af
+}
+.empty .emoji{font-size:2.5rem;margin-bottom:12px}
+.empty p{font-size:0.9375rem}
+
+/* Error state */
+.error-state{
+  text-align:center;padding:80px 24px
+}
+.error-state .emoji{font-size:2.5rem;margin-bottom:12px}
+.error-state p{font-size:0.9375rem;color:#6b7280}
+
+/* Loading */
+.loading{text-align:center;padding:80px 24px}
+.spinner{
+  width:24px;height:24px;border:3px solid #e5e7eb;
+  border-top-color:#2563eb;border-radius:50%;animation:spin .6s linear infinite;
+  margin:0 auto 12px
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading p{font-size:0.875rem;color:#9ca3af}
+
+/* Pagination */
+.pagination{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 0 32px;font-size:0.8125rem
+}
+.pagination .info{color:#9ca3af}
+.pagination .pages{display:flex;gap:4px}
+.pagination .pages button{
+  width:32px;height:32px;border:1px solid #e5e7eb;border-radius:6px;
+  background:#fff;color:#374151;cursor:pointer;font-size:0.8125rem;
+  transition:all .1s ease;display:flex;align-items:center;justify-content:center
+}
+.pagination .pages button:hover{background:#f3f4f6;border-color:#d1d5db}
+.pagination .pages button.active{background:#2563eb;color:#fff;border-color:#2563eb}
+.pagination .pages button:disabled{opacity:.3;cursor:default}
+
+/* Footer (GH Pages) */
+.gh-footer{
+  text-align:center;padding:32px 24px 48px;
+  border-top:1px solid #e5e7eb;color:#9ca3af;font-size:0.8125rem
+}
+
+/* Dashboard mode toggle */
+.mode-dashboard .gh-only{display:none!important}
+.mode-github .app-only{display:none!important}
+
+/* Responsive */
+@media(max-width:640px){
+  .header-inner{flex-direction:column;gap:8px;align-items:flex-start}
+  .controls .search-wrap{min-width:100%}
+  .card{flex-direction:column}
+  .card-thumb{width:100%;height:auto;aspect-ratio:16/9}
+  .pagination{flex-direction:column;gap:8px;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <h1>Stream<span>Saver</span></h1>
+    <div class="stats-row" id="stats-row">
+      <span>📁 <span class="num" id="stat-files">-</span> files</span>
+      <span class="stat-divider"></span>
+      <span>💾 <span class="num" id="stat-size">-</span></span>
+      <span class="stat-divider"></span>
+      <span>📺 <span class="num" id="stat-channels">-</span> channels</span>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+<!-- GitHub Pages Mode -->
+<section class="gh-only">
+  <div class="hero">
+    <h2>Stream<span>Saver</span></h2>
+    <p>Automatically download YouTube membership streams via Discord bot, with web dashboard and Google Drive integration.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="https://github.com/anomalyco/StreamSaver">View on GitHub</a>
+      <a class="btn btn-secondary" href="https://github.com/anomalyco/StreamSaver/issues">Report Issue</a>
+    </div>
+    <div class="hero-features">
+      <div>📥 &nbsp;Auto download</div>
+      <div>🔒 &nbsp;Membership support</div>
+      <div>☁️ &nbsp;Google Drive upload</div>
+      <div>🎨 &nbsp;Web dashboard</div>
+    </div>
+    <p style="margin-top:48px;font-size:0.8125rem;color:#9ca3af">
+      💡 To view your download history, start the bot and visit<br>
+      <code style="background:#f3f4f6;padding:3px 8px;border-radius:4px">http://localhost:8080</code>
+    </p>
+  </div>
+  <div class="gh-footer">
+    StreamSaver &middot; MIT License
+  </div>
+</section>
+
+<!-- Dashboard Mode -->
+<section class="app-only">
+  <div class="controls">
+    <div class="search-wrap">
+      <span class="icon">🔍</span>
+      <input type="text" id="search" placeholder="Search by title or channel...">
+    </div>
+    <select id="channel-filter"><option value="">All channels</option></select>
+    <select id="sort">
+      <option value="newest">Latest</option>
+      <option value="oldest">Oldest</option>
+      <option value="largest">Largest</option>
+      <option value="smallest">Smallest</option>
+    </select>
+    <label id="membership-label">
+      <input type="checkbox" id="membership-filter"> Members only
+    </label>
+  </div>
+
+  <div class="info-bar">
+    <span id="result-info"></span>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <p>Loading history...</p>
+  </div>
+
+  <div id="error-state" class="error-state" style="display:none">
+    <div class="emoji">😕</div>
+    <p>Could not connect to StreamSaver web server.</p>
+    <p style="margin-top:8px;font-size:0.8125rem">Make sure the bot is running and refresh the page.</p>
+  </div>
+
+  <div id="empty-state" class="empty" style="display:none">
+    <div class="emoji">📭</div>
+    <p>No downloads yet.</p>
+  </div>
+
+  <div id="cards" class="cards" style="display:none"></div>
+
+  <div id="pagination" class="pagination" style="display:none">
+    <span class="info" id="page-info"></span>
+    <div class="pages" id="page-buttons"></div>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+const API = window.location.port === '8080' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+if(!API){
+  document.body.className = 'mode-github';
+  return;
+}
+document.body.className = 'mode-dashboard';
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+const searchInput = $('#search');
+const channelFilter = $('#channel-filter');
+const sortSelect = $('#sort');
+const membershipCheck = $('#membership-filter');
+const cards = $('#cards');
+const loading = $('#loading');
+const emptyState = $('#empty-state');
+const errorState = $('#error-state');
+const pagination = $('#pagination');
+const pageInfo = $('#page-info');
+const pageButtons = $('#page-buttons');
+const resultInfo = $('#result-info');
+
+let currentPage = 1;
+let timer = null;
+
+function fmtSize(bytes){
+  if(!bytes) return '0 B';
+  const units = ['B','KB','MB','GB'];
+  let s = bytes;
+  for(const u of units){
+    if(s < 1024) return s.toFixed(1) + ' ' + u;
+    s /= 1024;
+  }
+  return s.toFixed(1) + ' TB';
+}
+
+function fmtDate(d){
+  if(!d || d.length < 8) return '';
+  const y = d.slice(0,4), m = d.slice(4,6), day = d.slice(6,8);
+  return `${y}.${m}.${day}`;
+}
+
+function fmtDur(sec){
+  if(!sec) return '';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if(h) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+
+function renderCard(item){
+  const thumb = item.thumbnail || `https://img.youtube.com/vi/${item.id}/mqdefault.jpg`;
+  const duration = fmtDur(item.duration);
+  const date = fmtDate(item.upload_date);
+  const size = item.file_size_str || fmtSize(item.file_size);
+  const badges = [];
+  if(item.is_membership) badges.push('<span class="badge badge-membership">🔒 MEMBERSHIP</span>');
+  if(item.upload_to) badges.push('<span class="badge badge-gdrive">☁️ GDrive</span>');
+
+  return `<div class="card">
+    <div class="card-thumb">
+      <img src="${thumb}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div style=\\'padding:35% 0;text-align:center;color:#d1d5db;font-size:1.5rem\\'>🎬</div>'">
+      ${duration ? '<span class="dur">'+duration+'</span>' : ''}
+    </div>
+    <div class="card-body">
+      <div class="card-title" title="${item.title.replace(/"/g,'&quot;')}">${item.title}</div>
+      <div class="card-meta">
+        <span class="channel">${item.channel}</span>
+        <span class="dot"></span>
+        <span>${date}</span>
+        <span class="dot"></span>
+        <span>${size}</span>
+      </div>
+      <div class="card-badges">${badges.join('')}</div>
+    </div>
+  </div>`;
+}
+
+async function fetchData(){
+  const params = new URLSearchParams();
+  params.set('page', currentPage);
+  params.set('sort', sortSelect.value);
+  if(membershipCheck.checked) params.set('membership', 'true');
+  const search = searchInput.value.trim();
+  if(search) params.set('search', search);
+  const ch = channelFilter.value;
+  if(ch) params.set('channel', ch);
+
+  try{
+    const [histRes, statsRes] = await Promise.all([
+      fetch('/api/history?' + params.toString()),
+      fetch('/api/stats')
+    ]);
+    if(!histRes.ok || !statsRes.ok) throw new Error('API error');
+    const data = await histRes.json();
+    const stats = await statsRes.json();
+
+    // Update stats
+    $('#stat-files').textContent = stats.total_files;
+    $('#stat-size').textContent = stats.total_size_str;
+    $('#stat-channels').textContent = stats.channel_count;
+
+    // Update channel filter options
+    const currentVal = channelFilter.value;
+    channelFilter.innerHTML = '<option value="">All channels</option>';
+    for(const ch of stats.channels){
+      const opt = document.createElement('option');
+      opt.value = ch.name;
+      opt.textContent = ch.name + ' (' + ch.count + ')';
+      if(ch.name === currentVal) opt.selected = true;
+      channelFilter.appendChild(opt);
+    }
+
+    if(data.total === 0){
+      cards.style.display = 'none';
+      emptyState.style.display = 'block';
+      pagination.style.display = 'none';
+      resultInfo.textContent = 'No results';
+      return;
+    }
+
+    emptyState.style.display = 'none';
+    cards.style.display = 'block';
+    cards.innerHTML = data.items.map(renderCard).join('');
+
+    resultInfo.textContent = 'Showing ' + Math.min(data.total, data.per_page) + ' of ' + data.total + ' results';
+
+    if(data.total_pages > 1){
+      pagination.style.display = 'flex';
+      pageInfo.textContent = 'Page ' + data.page + ' of ' + data.total_pages;
+      let html = '';
+      const maxButtons = 5;
+      let startPage = Math.max(1, data.page - Math.floor(maxButtons/2));
+      let endPage = Math.min(data.total_pages, startPage + maxButtons - 1);
+      if(endPage - startPage + 1 < maxButtons){
+        startPage = Math.max(1, endPage - maxButtons + 1);
+      }
+
+      if(data.page > 1){
+        html += '<button data-page="'+(data.page-1)+'">‹</button>';
+      }
+      for(let p = startPage; p <= endPage; p++){
+        html += '<button data-page="'+p+'"'+(p===data.page?' class="active"':'')+'>'+p+'</button>';
+      }
+      if(data.page < data.total_pages){
+        html += '<button data-page="'+(data.page+1)+'">›</button>';
+      }
+      pageButtons.innerHTML = html;
+      pageButtons.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          currentPage = parseInt(btn.dataset.page);
+          fetchData();
+        });
+      });
+    } else {
+      pagination.style.display = 'none';
+    }
+
+    loading.style.display = 'none';
+    errorState.style.display = 'none';
+
+  }catch(e){
+    loading.style.display = 'none';
+    cards.style.display = 'none';
+    emptyState.style.display = 'none';
+    errorState.style.display = 'block';
+  }
+}
+
+// Initial load
+fetchData();
+
+// Filter events
+searchInput.addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(() => { currentPage = 1; fetchData(); }, 300);
+});
+channelFilter.addEventListener('change', () => { currentPage = 1; fetchData(); });
+sortSelect.addEventListener('change', () => { currentPage = 1; fetchData(); });
+membershipCheck.addEventListener('change', () => { currentPage = 1; fetchData(); });
+
+// Auto-refresh stats every 10s, full refresh every 30s
+setInterval(() => {
+  fetch('/api/stats').then(r=>r.json()).then(stats => {
+    $('#stat-files').textContent = stats.total_files;
+    $('#stat-size').textContent = stats.total_size_str;
+    $('#stat-channels').textContent = stats.channel_count;
+  }).catch(()=>{});
+}, 10000);
+
+setInterval(() => {
+  if(document.hidden) return;
+  fetchData();
+}, 30000);
+
+})();
+</script>
+</body>
+</html>
