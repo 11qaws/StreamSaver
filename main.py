@@ -1,10 +1,11 @@
 import os
 import sys
+import traceback
 import logging
 from logging.handlers import TimedRotatingFileHandler
 
 import config
-from cookie_manager import CookieManager, IS_WINDOWS
+from cookie_manager import CookieManager, IS_WINDOWS, _clear_lock
 from downloader import DownloadManager
 from discord_bot import StreamSaverBot
 from gui import GUIManager
@@ -102,9 +103,15 @@ def main():
     try:
         bot.run(config.DISCORD_TOKEN)
     except KeyboardInterrupt:
-        pass
+        logger.info("Shutdown requested")
+        sys.exit(42)
+    except Exception as e:
+        logger.critical("Bot crashed: %s", traceback.format_exc())
+        sys.exit(1)
     finally:
+        cm.stop()
         restore_sleep()
+        _clear_lock()
         logger.info("StreamSaver stopped")
 
 

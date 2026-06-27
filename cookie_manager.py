@@ -2,6 +2,8 @@ import os
 import json
 import time
 import logging
+import random
+import socket
 import subprocess
 import threading
 import urllib.request
@@ -19,12 +21,47 @@ EDGE_FLAGS = [
     "--disable-extensions",
     "--disable-gpu",
 ]
+LOCK_FILE = os.path.join(config.BASE_DIR, "bot_edge.lock")
+
+
+def _pick_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _read_lock():
+    if not os.path.exists(LOCK_FILE):
+        return None, None
+    try:
+        with open(LOCK_FILE) as f:
+            data = json.load(f)
+        return data.get("pid"), data.get("port")
+    except Exception:
+        return None, None
+
+
+def _write_lock(pid, port):
+    try:
+        with open(LOCK_FILE, "w") as f:
+            json.dump({"pid": pid, "port": port}, f)
+    except Exception as e:
+        logger.warning("Failed to write lock: %s", e)
+
+
+def _clear_lock():
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    except Exception:
+        pass
 
 
 class CookieManager:
     def __init__(self):
         self.cookie_valid = False
         self.edge_pid = None
+        self.cdp_port = None
         self._lock = threading.Lock()
         self._on_status_change = None
         self._running = False
@@ -40,46 +77,45 @@ class CookieManager:
                 subprocess.run(
                     ["taskkill", "/pid", str(pid), "/f"],
                     capture_output=True, text=True, timeout=5)
-                time.sleep(1)
-                return True
+                time.sleep(0.5)
             except Exception as e:
                 logger.warning("Failed to kill bot Edge (PID %d): %s", pid, e)
-        return False
 
-    def _is_edge_running(self):
-        if not self.edge_pid:
+    def _is_running(self, pid):
+        if not pid:
             return False
         try:
             if IS_WINDOWS:
                 r = subprocess.run(
-                    ["tasklist", "/fi", f"PID eq {self.edge_pid}"],
+                    ["tasklist", "/fi", f"PID eq {pid}"],
                     capture_output=True, text=True, timeout=5)
-                return str(self.edge_pid) in r.stdout
+                return str(pid) in r.stdout
             else:
-                os.kill(self.edge_pid, 0)
+                os.kill(pid, 0)
                 return True
         except Exception:
             return False
 
-    def _free_cdp_port(self):
-        if not IS_WINDOWS:
+    def _cleanup_stale(self):
+        pid, port = _read_lock()
+        if pid and self._is_running(pid) and port:
+            self.edge_pid = pid
+            self.cdp_port = port
+            logger.info("Reusing existing Edge (PID: %d, port: %d)", pid, port)
+            return True
+        if pid:
+            self._kill_pid(pid)
+        _clear_lock()
+        return False
+
+    def _kill_pid(self, pid):
+        if not pid or not IS_WINDOWS:
             return
         try:
-            r = subprocess.run(
-                f"netstat -ano | findstr :{config.CDP_PORT}",
-                capture_output=True, text=True, shell=True, timeout=5)
-            for line in r.stdout.splitlines():
-                if "LISTENING" in line:
-                    parts = line.strip().split()
-                    pid = int(parts[-1])
-                    if pid and pid != self.edge_pid:
-                        logger.info("Killing stale process on port %d (PID: %d)",
-                                   config.CDP_PORT, pid)
-                        subprocess.run(["taskkill", "/pid", str(pid), "/f"],
-                                      capture_output=True, timeout=5)
-                        time.sleep(1)
-        except Exception as e:
-            logger.debug("Port cleanup: %s", e)
+            subprocess.run(["taskkill", "/pid", str(pid), "/f"],
+                          capture_output=True, timeout=5)
+        except Exception:
+            pass
 
     def start_headless(self):
         if not IS_WINDOWS:
@@ -87,8 +123,11 @@ class CookieManager:
         if not os.path.exists(config.EDGE_PATH):
             logger.error("Edge not found at %s", config.EDGE_PATH)
             return False
-        self._kill_edge()
-        self._free_cdp_port()
+
+        if self._cleanup_stale():
+            return True
+
+        port = _pick_port()
         try:
             profile = config.BOT_EDGE_PROFILE
             os.makedirs(profile, exist_ok=True)
@@ -96,7 +135,7 @@ class CookieManager:
                 config.EDGE_PATH,
                 f"--user-data-dir={profile}",
                 "--headless=new",
-                f"--remote-debugging-port={config.CDP_PORT}",
+                f"--remote-debugging-port={port}",
                 "--remote-allow-origins=*",
                 *EDGE_FLAGS,
                 "--disable-features=msAppBoundEncryption",
@@ -105,27 +144,30 @@ class CookieManager:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.edge_pid = proc.pid
-            logger.info("Edge headless started (PID: %d, CDP: %d)",
-                       self.edge_pid, config.CDP_PORT)
+            self.cdp_port = port
+            _write_lock(proc.pid, port)
+            logger.info("Edge headless started (PID: %d, port: %d)", proc.pid, port)
             time.sleep(2)
             return True
         except Exception as e:
-            logger.error("Failed to start Edge headless: %s", e)
+            logger.error("Failed to start Edge: %s", e)
             self.edge_pid = None
+            self.cdp_port = None
+            _clear_lock()
             return False
 
     def start_visible(self):
         if not IS_WINDOWS:
             return False
         self._kill_edge()
-        self._free_cdp_port()
+        port = _pick_port()
         try:
             profile = config.BOT_EDGE_PROFILE
             os.makedirs(profile, exist_ok=True)
             cmd = [
                 config.EDGE_PATH,
                 f"--user-data-dir={profile}",
-                f"--remote-debugging-port={config.CDP_PORT}",
+                f"--remote-debugging-port={port}",
                 "--remote-allow-origins=*",
                 *EDGE_FLAGS,
                 "--disable-features=msAppBoundEncryption",
@@ -134,17 +176,23 @@ class CookieManager:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.edge_pid = proc.pid
-            logger.info("Edge visible started for login (PID: %d)", self.edge_pid)
+            self.cdp_port = port
+            _write_lock(proc.pid, port)
+            logger.info("Edge visible started for login (PID: %d, port: %d)", proc.pid, port)
             time.sleep(3)
             return True
         except Exception as e:
-            logger.error("Failed to start Edge visible: %s", e)
+            logger.error("Failed to start visible Edge: %s", e)
             self.edge_pid = None
+            self.cdp_port = None
+            _clear_lock()
             return False
 
     def _cdp_request(self, path):
+        if not self.cdp_port:
+            return None
         try:
-            url = f"http://127.0.0.1:{config.CDP_PORT}{path}"
+            url = f"http://127.0.0.1:{self.cdp_port}{path}"
             with urllib.request.urlopen(url, timeout=5) as resp:
                 return json.loads(resp.read().decode())
         except Exception as e:
@@ -169,16 +217,26 @@ class CookieManager:
             return None
 
         import websocket
-        try:
-            ws = websocket.create_connection(ws_url, timeout=10)
-            ws.send(json.dumps({"id": 1, "method": "Network.getAllCookies"}))
-            resp = ws.recv()
-            ws.close()
-            data = json.loads(resp)
-            return data.get("result", {}).get("cookies", [])
-        except Exception as e:
-            logger.error("CDP getAllCookies failed: %s", e)
-            return None
+        for origin in (None, f"http://127.0.0.1:{self.cdp_port}"):
+            try:
+                kw = {"timeout": 10}
+                if origin is None:
+                    kw["origin"] = None
+                else:
+                    kw["origin"] = origin
+                ws = websocket.create_connection(ws_url, **kw)
+                ws.send(json.dumps({"id": 1, "method": "Network.getAllCookies"}))
+                resp = ws.recv()
+                ws.close()
+                data = json.loads(resp)
+                return data.get("result", {}).get("cookies", [])
+            except Exception as e:
+                if "403" in str(e) and origin is None:
+                    logger.debug("CDP 403 with origin=None, retrying with explicit origin")
+                    continue
+                logger.error("CDP getAllCookies failed: %s", e)
+                return None
+        return None
 
     def _cookies_to_netscape(self, cookies):
         lines = [
@@ -203,7 +261,7 @@ class CookieManager:
 
     def extract_cookies(self):
         with self._lock:
-            if not self._is_edge_running():
+            if not self._is_running(self.edge_pid):
                 logger.warning("Edge not running, cannot extract cookies")
                 return False
 
@@ -273,7 +331,7 @@ class CookieManager:
             timeout = 300
             logged_in = False
             while time.time() - start < timeout:
-                if not self._is_edge_running():
+                if not self._is_running(self.edge_pid):
                     logger.info("Edge closed by user during login")
                     break
                 cookies = self._cdp_get_all_cookies()
@@ -309,6 +367,7 @@ class CookieManager:
     def stop(self):
         self._running = False
         self._kill_edge()
+        _clear_lock()
 
     def get_status(self):
         f_exists = os.path.exists(config.COOKIE_FILE)
@@ -319,5 +378,5 @@ class CookieManager:
             "cookie_size": f_size,
             "bot_edge_pid": self.edge_pid,
             "platform": "windows" if IS_WINDOWS else "linux",
-            "edge_running": self._is_edge_running(),
+            "edge_running": self._is_running(self.edge_pid),
         }

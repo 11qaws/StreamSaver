@@ -16,6 +16,8 @@ class StreamSaverCog(commands.Cog):
         self.cm = bot.cm
         self._channel = None
         self._ready = False
+        self._sent_online = False
+        self._login_in_progress = False
 
         self.dl.on_event(self._on_dl_event)
 
@@ -24,7 +26,9 @@ class StreamSaverCog(commands.Cog):
         logger.info(f"Bot logged in as {self.bot.user}")
         self._channel = self.bot.get_channel(config.DISCORD_CHANNEL_ID)
         if self._channel:
-            await self._channel.send("StreamSaver 온라인")
+            if not self._sent_online:
+                await self._channel.send("StreamSaver 온라인")
+                self._sent_online = True
             self._ready = True
 
     def _on_dl_event(self, event, task, **kw):
@@ -121,14 +125,20 @@ class StreamSaverCog(commands.Cog):
 
     @commands.command(name="로그인")
     async def cmd_login(self, ctx):
+        if self._login_in_progress:
+            await ctx.send("⏳ 이미 로그인 진행 중입니다. 완료될 때까지 기다려 주세요.")
+            return
+
         await ctx.send(
             "🌐 Edge가 실행됩니다. YouTube에 로그인해 주세요.\n"
             "로그인이 감지되면 자동으로 쿠키를 저장하고 "
             "headless 모드로 전환됩니다.")
+        self._login_in_progress = True
         self.cm.login_flow(on_done=lambda ok: asyncio.run_coroutine_threadsafe(
             self._login_result(ctx, ok), self.bot.loop))
 
     async def _login_result(self, ctx, ok):
+        self._login_in_progress = False
         if ok:
             await ctx.send("✅ 로그인 성공! 쿠키가 갱신되었습니다.")
         else:

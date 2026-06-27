@@ -23,14 +23,12 @@ if platform.system() == "Windows":
     FFMPEG = r"E:\FFMPEG\bin\ffmpeg.exe"
     EDGE_PATH = r"E:\FFMPEG\edge_portable\msedge.exe"
     BOT_EDGE_PROFILE = r"E:\FFMPEG\edge_bot_profile"
-    CDP_PORT = 9222
 else:
     YT_DLP = "/home/qumin/.local/bin/yt-dlp"
     RCLONE = "rclone"
     FFMPEG = "/home/qumin/bin/ffmpeg"
     EDGE_PATH = ""
     BOT_EDGE_PROFILE = ""
-    CDP_PORT = 0
 
 MAX_PARALLEL = 5
 PROGRESS_INTERVAL = 7
