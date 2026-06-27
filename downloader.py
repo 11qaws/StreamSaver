@@ -71,13 +71,17 @@ class DownloadManager:
     def get_info(self, url):
         cmd = [config.YT_DLP, "--no-download", "--dump-json",
                "--no-warnings", url]
-        if self.cm.cookie_valid and os.path.exists(config.COOKIE_FILE):
+        if self.cm and self.cm.cookie_valid and os.path.exists(config.COOKIE_FILE):
             cmd.extend(["--cookies", config.COOKIE_FILE])
         try:
             result = subprocess.run(cmd, capture_output=True, text=True,
                                     timeout=30)
             if result.returncode == 0 and result.stdout:
                 return json.loads(result.stdout.strip().split("\n")[0])
+            err = result.stderr[:300].lower()
+            if "sign in" in err or "login required" in err or "cookie" in err:
+                self._emit("warning", None,
+                           message="🔑 YouTube 쿠키가 만료되었습니다. `!로그인`을 실행해 주세요.")
             logger.error(f"get_info failed: {result.stderr[:300]}")
             return None
         except Exception as e:

@@ -3,6 +3,7 @@ import time
 import threading
 import os
 import platform
+import signal
 import logging
 
 import config
@@ -10,57 +11,100 @@ import config
 logger = logging.getLogger("StreamSaver.CookieManager")
 
 IS_WINDOWS = platform.system() == "Windows"
+EDGE_FLAGS = [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-sync",
+    "--disable-extensions",
+    "--disable-gpu",
+    "--disable-features=msAppBoundEncryption",
+]
 
 
 class CookieManager:
     def __init__(self):
         self.cookie_valid = False
+        self.edge_pid = None
         self._lock = threading.Lock()
         self._on_status_change = None
 
     def on_status_change(self, callback):
         self._on_status_change = callback
 
-    def start_edge_minimized(self):
+    def start_headless(self):
         if not IS_WINDOWS:
-            logger.info("Edge management not supported on this OS")
             return False
         try:
-            subprocess.Popen(
-                ["start", "/min", "msedge", "--no-first-run",
-                 "--disable-features=msAppBoundEncryption"],
-                shell=True)
-            logger.info("Edge started minimized")
+            profile = config.BOT_EDGE_PROFILE
+            os.makedirs(profile, exist_ok=True)
+            proc = subprocess.Popen(
+                ["msedge", f"--user-data-dir={profile}",
+                 "--headless=new", *EDGE_FLAGS,
+                 "https://www.youtube.com"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+            self.edge_pid = proc.pid
+            logger.info("Edge headless started (PID: %d)", self.edge_pid)
             return True
         except Exception as e:
-            logger.error(f"Failed to start Edge: {e}")
+            logger.error("Failed to start Edge headless: %s", e)
+            self.edge_pid = None
             return False
 
-    def kill_edge(self):
-        if not IS_WINDOWS:
+    def _kill_bot_edge(self):
+        if not self.edge_pid:
             return True
         try:
-            subprocess.run(
-                ["taskkill", "/f", "/im", "msedge.exe"],
-                capture_output=True, timeout=10)
-            time.sleep(1.5)
-            logger.info("Edge processes killed")
+            if IS_WINDOWS:
+                subprocess.run(
+                    ["taskkill", "/f", "/pid", str(self.edge_pid)],
+                    capture_output=True, timeout=5)
+            else:
+                os.kill(self.edge_pid, signal.SIGTERM)
+            self.edge_pid = None
+            time.sleep(1)
             return True
         except subprocess.TimeoutExpired:
-            logger.warning("Timeout killing Edge")
+            logger.warning("Timeout killing bot Edge PID %d", self.edge_pid)
             return False
         except Exception as e:
-            logger.error(f"Failed to kill Edge: {e}")
+            logger.error("Failed to kill bot Edge: %s", e)
+            self.edge_pid = None
+            return False
+
+    def start_visible(self):
+        if not IS_WINDOWS:
+            return False
+        try:
+            profile = config.BOT_EDGE_PROFILE
+            os.makedirs(profile, exist_ok=True)
+            proc = subprocess.Popen(
+                ["msedge", f"--user-data-dir={profile}",
+                 *EDGE_FLAGS,
+                 "https://www.youtube.com"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+            self.edge_pid = proc.pid
+            logger.info("Edge visible started for login (PID: %d)", self.edge_pid)
+            return True
+        except Exception as e:
+            logger.error("Failed to start Edge visible: %s", e)
+            self.edge_pid = None
             return False
 
     def extract_cookies(self):
         if not IS_WINDOWS:
-            self.cookie_valid = os.path.exists(config.COOKIE_FILE) and os.path.getsize(config.COOKIE_FILE) > 200
+            f_exists = os.path.exists(config.COOKIE_FILE)
+            f_size = os.path.getsize(config.COOKIE_FILE) if f_exists else 0
+            self.cookie_valid = f_size > 200
             return self.cookie_valid
+
+        self._kill_bot_edge()
+        os.makedirs(config.BOT_EDGE_PROFILE, exist_ok=True)
 
         cmd = [
             config.YT_DLP,
-            "--cookies-from-browser", f"edge:{config.EDGE_PROFILE}",
+            "--cookies-from-browser", f"edge:{config.BOT_EDGE_PROFILE}",
             "--cookies", config.COOKIE_FILE,
             "--skip-download",
             "https://www.youtube.com/watch?v=QHsG4CgPblE",
@@ -68,88 +112,94 @@ class CookieManager:
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=30)
-            if (os.path.exists(config.COOKIE_FILE) and
-                    os.path.getsize(config.COOKIE_FILE) > 200):
+            f_exists = os.path.exists(config.COOKIE_FILE)
+            f_size = os.path.getsize(config.COOKIE_FILE) if f_exists else 0
+            if f_size > 200:
                 self.cookie_valid = True
-                logger.info("Cookies extracted successfully")
+                logger.info("Cookies extracted successfully (%d bytes)", f_size)
+                self.start_headless()
                 return True
             logger.warning(
-                f"Cookie file too small: "
-                f"{os.path.getsize(config.COOKIE_FILE) if os.path.exists(config.COOKIE_FILE) else 0}B")
+                "Cookie file too small: %d bytes", f_size)
             self.cookie_valid = False
+            self.start_headless()
             return False
         except Exception as e:
-            logger.error(f"Cookie extraction failed: {e}")
+            logger.error("Cookie extraction failed: %s", e)
             self.cookie_valid = False
+            self.start_headless()
             return False
 
     def refresh_cookies(self):
         with self._lock:
-            logger.info("Cookie refresh cycle starting...")
-            self.kill_edge()
+            logger.info("Cookie refresh cycle...")
             success = self.extract_cookies()
-            if IS_WINDOWS:
-                self.start_edge_minimized()
             if success:
-                logger.info("Cookie refresh completed successfully")
+                logger.info("Cookie refresh OK")
             else:
-                logger.warning("Cookie refresh failed, will retry next cycle")
+                logger.warning("Cookie refresh failed, retry in 30min")
             if self._on_status_change:
                 self._on_status_change("cookie_refresh", success)
             return success
 
     def start_auto_refresh(self):
         if not IS_WINDOWS:
-            logger.info("Auto cookie refresh disabled on this OS")
             return
 
         def _loop():
-            time.sleep(30)
-            self.refresh_cookies()
+            if not self.cookie_valid:
+                self.refresh_cookies()
             while True:
                 time.sleep(config.COOKIE_REFRESH_INTERVAL)
                 self.refresh_cookies()
 
         thread = threading.Thread(target=_loop, daemon=True)
         thread.start()
-        logger.info("Auto cookie refresh started every 30min")
+        logger.info("Auto cookie refresh every 30min")
 
     def login_flow(self, on_done=None):
         if not IS_WINDOWS:
-            logger.info("Login flow not supported on this OS")
             if on_done:
                 on_done(False)
             return
 
         def _wait_for_close():
-            self.kill_edge()
-            extant = self.extract_cookies()
-            if extant:
-                self.start_edge_minimized()
+            self._kill_bot_edge()
+
+            extant = os.path.exists(config.COOKIE_FILE)
+            if extant and self.cookie_valid:
                 logger.info("Existing cookies still valid, no login needed")
+                self.start_headless()
                 if on_done:
                     on_done(True)
                 return
 
-            subprocess.Popen(
-                ["start", "msedge", "--no-first-run",
-                 "--disable-features=msAppBoundEncryption"],
-                shell=True)
-            logger.info("Edge opened for user login")
+            self.start_visible()
 
-            while True:
-                r = subprocess.run(
-                    ["tasklist", "/fi", "imagename eq msedge.exe"],
-                    capture_output=True, text=True)
-                if "msedge.exe" not in r.stdout:
-                    break
-                time.sleep(2)
+            if self.edge_pid:
+                try:
+                    while True:
+                        if IS_WINDOWS:
+                            r = subprocess.run(
+                                ["tasklist", "/fi", f"PID eq {self.edge_pid}"],
+                                capture_output=True, text=True)
+                            if str(self.edge_pid) not in r.stdout:
+                                break
+                        else:
+                            try:
+                                os.kill(self.edge_pid, 0)
+                            except ProcessLookupError:
+                                break
+                        time.sleep(2)
+                except Exception:
+                    pass
+
             time.sleep(1)
+            self.edge_pid = None
 
             success = self.extract_cookies()
-            self.start_edge_minimized()
             if success:
-                logger.info("Login successful, cookies extracted")
+                logger.info("Login successful")
             else:
                 logger.warning("Login may have failed")
             if on_done:
@@ -159,11 +209,12 @@ class CookieManager:
         thread.start()
 
     def get_status(self):
+        f_exists = os.path.exists(config.COOKIE_FILE)
+        f_size = os.path.getsize(config.COOKIE_FILE) if f_exists else 0
         return {
             "cookie_valid": self.cookie_valid,
-            "cookie_file": (
-                os.path.exists(config.COOKIE_FILE) and
-                os.path.getsize(config.COOKIE_FILE) > 100
-            ),
+            "cookie_file": f_exists and f_size > 100,
+            "cookie_size": f_size,
+            "bot_edge_pid": self.edge_pid,
             "platform": "windows" if IS_WINDOWS else "linux",
         }

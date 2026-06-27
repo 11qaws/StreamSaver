@@ -79,8 +79,12 @@ def main():
 
     bot = StreamSaverBot(dm, cm)
 
-    cm.start_edge_minimized()
-    cm.extract_cookies()
+    cm.cookie_valid = os.path.exists(config.COOKIE_FILE) and os.path.getsize(config.COOKIE_FILE) > 200
+    if cm.cookie_valid:
+        logger.info("Existing cookies found (%d bytes)", os.path.getsize(config.COOKIE_FILE))
+    else:
+        logger.warning("No valid cookie file found. Use !로그인 to set up YouTube login.")
+    cm.start_headless()
     cm.start_auto_refresh()
 
     gui.notify("StreamSaver", "봇이 시작되었습니다")

@@ -22,11 +22,13 @@ if platform.system() == "Windows":
     RCLONE = r"E:\FFMPEG\bin\rclone.exe"
     FFMPEG = r"E:\FFMPEG\bin\ffmpeg.exe"
     EDGE_PROFILE = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\User Data")
+    BOT_EDGE_PROFILE = r"E:\FFMPEG\edge_bot_profile"
 else:
     YT_DLP = "/home/qumin/.local/bin/yt-dlp"
     RCLONE = "rclone"
     FFMPEG = "/home/qumin/bin/ffmpeg"
     EDGE_PROFILE = ""
+    BOT_EDGE_PROFILE = ""
 
 MAX_PARALLEL = 5
 PROGRESS_INTERVAL = 7
