@@ -316,6 +316,7 @@ class DownloadManager:
             task.file_path = fname
 
         self._record_history(task, info, is_membership, fname)
+        self._sync_to_github()
 
         channel = (info.get("channel") or info.get("uploader") or "").lower()
         for key, rule in config.UPLOAD_RULES.items():
@@ -387,6 +388,27 @@ class DownloadManager:
                 json.dump(history, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"History write error: {e}")
+
+    def _sync_to_github(self):
+        try:
+            subprocess.run(
+                ["git", "add", "downloads/history.json"],
+                cwd=config.BASE_DIR, capture_output=True, timeout=10)
+            r = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=config.BASE_DIR, capture_output=True, timeout=10)
+            if r.returncode != 0:
+                subprocess.run(
+                    ["git", "commit", "-m", "Update download history"],
+                    cwd=config.BASE_DIR, capture_output=True, timeout=10)
+                subprocess.run(
+                    ["git", "push"],
+                    cwd=config.BASE_DIR, capture_output=True, timeout=30)
+                logger.info("History synced to GitHub")
+            else:
+                logger.debug("No history changes to sync")
+        except Exception as e:
+            logger.warning(f"GitHub sync failed: {e}")
 
     def _get_output_filename(self, task, info, is_membership):
         template = self.output_template(info, is_membership)

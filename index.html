@@ -293,12 +293,20 @@ header{
 
 <script>
 (function(){
-const API = window.location.port === '8080' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const isLocal = window.location.port === '8080' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const GITHUB_USER = '11qaws';
+const GITHUB_REPO = 'StreamSaver';
+const RAW_URL = 'https://raw.githubusercontent.com/' + GITHUB_USER + '/' + GITHUB_REPO + '/main/downloads/history.json';
 
-if(!API){
+if(!isLocal){
   document.body.className = 'mode-github';
+  document.querySelector('.gh-only .btn-primary').href = 'https://github.com/' + GITHUB_USER + '/' + GITHUB_REPO;
+  document.querySelector('.gh-only .btn-secondary').href = 'https://github.com/' + GITHUB_USER + '/' + GITHUB_REPO + '/issues';
+}
+if(!isLocal && !window.location.hostname.includes('github.io') && !window.location.hostname.includes('localhost')){
   return;
 }
+
 document.body.className = 'mode-dashboard';
 
 const $ = s => document.querySelector(s);
@@ -317,7 +325,9 @@ const pageInfo = $('#page-info');
 const pageButtons = $('#page-buttons');
 const resultInfo = $('#result-info');
 
+let allData = [];
 let currentPage = 1;
+const PER_PAGE = 20;
 let timer = null;
 
 function fmtSize(bytes){
@@ -334,7 +344,7 @@ function fmtSize(bytes){
 function fmtDate(d){
   if(!d || d.length < 8) return '';
   const y = d.slice(0,4), m = d.slice(4,6), day = d.slice(6,8);
-  return `${y}.${m}.${day}`;
+  return y + '.' + m + '.' + day;
 }
 
 function fmtDur(sec){
@@ -346,149 +356,245 @@ function fmtDur(sec){
 }
 
 function renderCard(item){
-  const thumb = item.thumbnail || `https://img.youtube.com/vi/${item.id}/mqdefault.jpg`;
+  const thumb = item.thumbnail || 'https://img.youtube.com/vi/' + item.id + '/mqdefault.jpg';
   const duration = fmtDur(item.duration);
   const date = fmtDate(item.upload_date);
   const size = item.file_size_str || fmtSize(item.file_size);
-  const badges = [];
-  if(item.is_membership) badges.push('<span class="badge badge-membership">🔒 MEMBERSHIP</span>');
-  if(item.upload_to) badges.push('<span class="badge badge-gdrive">☁️ GDrive</span>');
+  var badges = '';
+  if(item.is_membership) badges += '<span class="badge badge-membership">🔒 MEMBERSHIP</span>';
+  if(item.upload_to) badges += '<span class="badge badge-gdrive">☁️ GDrive</span>';
 
-  return `<div class="card">
-    <div class="card-thumb">
-      <img src="${thumb}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div style=\\'padding:35% 0;text-align:center;color:#d1d5db;font-size:1.5rem\\'>🎬</div>'">
-      ${duration ? '<span class="dur">'+duration+'</span>' : ''}
-    </div>
-    <div class="card-body">
-      <div class="card-title" title="${item.title.replace(/"/g,'&quot;')}">${item.title}</div>
-      <div class="card-meta">
-        <span class="channel">${item.channel}</span>
-        <span class="dot"></span>
-        <span>${date}</span>
-        <span class="dot"></span>
-        <span>${size}</span>
-      </div>
-      <div class="card-badges">${badges.join('')}</div>
-    </div>
-  </div>`;
+  return '<div class="card">'
+    + '<div class="card-thumb">'
+    + '<img src="' + thumb + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'<div style=\\\'padding:35% 0;text-align:center;color:#d1d5db;font-size:1.5rem\\\'>🎬</div>\'">'
+    + (duration ? '<span class="dur">' + duration + '</span>' : '')
+    + '</div>'
+    + '<div class="card-body">'
+    + '<div class="card-title" title="' + item.title.replace(/"/g,'&quot;') + '">' + item.title + '</div>'
+    + '<div class="card-meta">'
+    + '<span class="channel">' + item.channel + '</span>'
+    + '<span class="dot"></span>'
+    + '<span>' + date + '</span>'
+    + '<span class="dot"></span>'
+    + '<span>' + size + '</span>'
+    + '</div>'
+    + '<div class="card-badges">' + badges + '</div>'
+    + '</div>'
+    + '</div>';
 }
 
-async function fetchData(){
-  const params = new URLSearchParams();
-  params.set('page', currentPage);
-  params.set('sort', sortSelect.value);
-  if(membershipCheck.checked) params.set('membership', 'true');
-  const search = searchInput.value.trim();
-  if(search) params.set('search', search);
-  const ch = channelFilter.value;
-  if(ch) params.set('channel', ch);
+function applyFilters(all){
+  var search = searchInput.value.trim().toLowerCase();
+  var channel = channelFilter.value.toLowerCase();
+  var membership = membershipCheck.checked;
+  var sort = sortSelect.value;
 
-  try{
-    const [histRes, statsRes] = await Promise.all([
-      fetch('/api/history?' + params.toString()),
-      fetch('/api/stats')
-    ]);
-    if(!histRes.ok || !statsRes.ok) throw new Error('API error');
-    const data = await histRes.json();
-    const stats = await statsRes.json();
+  var filtered = all;
+  if(search){
+    filtered = filtered.filter(function(e){
+      return (e.title || '').toLowerCase().indexOf(search) !== -1
+          || (e.channel || '').toLowerCase().indexOf(search) !== -1;
+    });
+  }
+  if(channel){
+    filtered = filtered.filter(function(e){
+      return (e.channel || '').toLowerCase().indexOf(channel) !== -1;
+    });
+  }
+  if(membership){
+    filtered = filtered.filter(function(e){ return e.is_membership; });
+  }
 
-    // Update stats
-    $('#stat-files').textContent = stats.total_files;
-    $('#stat-size').textContent = stats.total_size_str;
-    $('#stat-channels').textContent = stats.channel_count;
+  if(sort === 'oldest'){
+    filtered = filtered.slice().reverse();
+  } else if(sort === 'largest'){
+    filtered = filtered.slice().sort(function(a,b){ return (b.file_size||0) - (a.file_size||0); });
+  } else if(sort === 'smallest'){
+    filtered = filtered.slice().sort(function(a,b){ return (a.file_size||0) - (b.file_size||0); });
+  }
 
-    // Update channel filter options
-    const currentVal = channelFilter.value;
-    channelFilter.innerHTML = '<option value="">All channels</option>';
-    for(const ch of stats.channels){
-      const opt = document.createElement('option');
-      opt.value = ch.name;
-      opt.textContent = ch.name + ' (' + ch.count + ')';
-      if(ch.name === currentVal) opt.selected = true;
-      channelFilter.appendChild(opt);
-    }
+  return filtered;
+}
 
-    if(data.total === 0){
-      cards.style.display = 'none';
-      emptyState.style.display = 'block';
-      pagination.style.display = 'none';
-      resultInfo.textContent = 'No results';
-      return;
-    }
+function updateStats(all){
+  var channels = {};
+  var totalSize = 0;
+  var memCount = 0;
+  all.forEach(function(e){
+    var ch = e.channel || 'Unknown';
+    channels[ch] = (channels[ch] || 0) + 1;
+    totalSize += e.file_size || 0;
+    if(e.is_membership) memCount++;
+  });
 
-    emptyState.style.display = 'none';
-    cards.style.display = 'block';
-    cards.innerHTML = data.items.map(renderCard).join('');
+  var chList = Object.keys(channels).map(function(k){
+    return {name: k, count: channels[k]};
+  }).sort(function(a,b){ return b.count - a.count; });
 
-    resultInfo.textContent = 'Showing ' + Math.min(data.total, data.per_page) + ' of ' + data.total + ' results';
+  $('#stat-files').textContent = all.length;
+  $('#stat-size').textContent = fmtSize(totalSize);
+  $('#stat-channels').textContent = chList.length;
 
-    if(data.total_pages > 1){
-      pagination.style.display = 'flex';
-      pageInfo.textContent = 'Page ' + data.page + ' of ' + data.total_pages;
-      let html = '';
-      const maxButtons = 5;
-      let startPage = Math.max(1, data.page - Math.floor(maxButtons/2));
-      let endPage = Math.min(data.total_pages, startPage + maxButtons - 1);
-      if(endPage - startPage + 1 < maxButtons){
-        startPage = Math.max(1, endPage - maxButtons + 1);
-      }
+  return chList;
+}
 
-      if(data.page > 1){
-        html += '<button data-page="'+(data.page-1)+'">‹</button>';
-      }
-      for(let p = startPage; p <= endPage; p++){
-        html += '<button data-page="'+p+'"'+(p===data.page?' class="active"':'')+'>'+p+'</button>';
-      }
-      if(data.page < data.total_pages){
-        html += '<button data-page="'+(data.page+1)+'">›</button>';
-      }
-      pageButtons.innerHTML = html;
-      pageButtons.querySelectorAll('button').forEach(btn => {
-        btn.addEventListener('click', () => {
-          currentPage = parseInt(btn.dataset.page);
-          fetchData();
-        });
-      });
-    } else {
-      pagination.style.display = 'none';
-    }
-
-    loading.style.display = 'none';
-    errorState.style.display = 'none';
-
-  }catch(e){
-    loading.style.display = 'none';
+function render(filtered){
+  var total = filtered.length;
+  if(total === 0){
     cards.style.display = 'none';
-    emptyState.style.display = 'none';
-    errorState.style.display = 'block';
+    emptyState.style.display = 'block';
+    pagination.style.display = 'none';
+    resultInfo.textContent = 'No results';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  cards.style.display = 'block';
+
+  var start = (currentPage - 1) * PER_PAGE;
+  var end = start + PER_PAGE;
+  var pageItems = filtered.slice(start, end);
+  cards.innerHTML = pageItems.map(renderCard).join('');
+
+  var totalPages = Math.ceil(total / PER_PAGE);
+  resultInfo.textContent = 'Showing ' + pageItems.length + ' of ' + total + ' results';
+
+  if(totalPages > 1){
+    pagination.style.display = 'flex';
+    pageInfo.textContent = 'Page ' + currentPage + ' of ' + totalPages;
+    var html = '';
+    var maxButtons = 5;
+    var startPage = Math.max(1, currentPage - Math.floor(maxButtons/2));
+    var endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    if(endPage - startPage + 1 < maxButtons){
+      startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+    if(currentPage > 1){
+      html += '<button data-page="' + (currentPage - 1) + '">‹</button>';
+    }
+    for(var p = startPage; p <= endPage; p++){
+      html += '<button data-page="' + p + '"' + (p === currentPage ? ' class="active"' : '') + '>' + p + '</button>';
+    }
+    if(currentPage < totalPages){
+      html += '<button data-page="' + (currentPage + 1) + '">›</button>';
+    }
+    pageButtons.innerHTML = html;
+    Array.from(pageButtons.querySelectorAll('button')).forEach(function(btn){
+      btn.addEventListener('click', function(){
+        currentPage = parseInt(btn.dataset.page);
+        render(applyFilters(allData));
+      });
+    });
+  } else {
+    pagination.style.display = 'none';
   }
 }
 
-// Initial load
-fetchData();
+function loadAndRender(){
+  var search = searchInput.value.trim().toLowerCase();
+  var filtered = applyFilters(allData);
+  currentPage = 1;
+  render(filtered);
+
+  var chList = updateStats(allData);
+
+  // Update channel filter options
+  var curVal = channelFilter.value;
+  channelFilter.innerHTML = '<option value="">All channels</option>';
+  chList.forEach(function(ch){
+    var opt = document.createElement('option');
+    opt.value = ch.name;
+    opt.textContent = ch.name + ' (' + ch.count + ')';
+    if(ch.name === curVal) opt.selected = true;
+    channelFilter.appendChild(opt);
+  });
+}
+
+function initLocal(){
+  var tryApi = function(){
+    Promise.all([
+      fetch('/api/history'),
+      fetch('/api/stats')
+    ]).then(function(responses){
+      if(!responses[0].ok || !responses[1].ok) throw new Error('fail');
+      return Promise.all([responses[0].json(), responses[1].json()]);
+    }).then(function(results){
+      allData = results[0].items || results[0];
+      loading.style.display = 'none';
+      loadAndRender();
+    }).catch(function(){
+      // API not ready, try raw
+      initRaw();
+    });
+  };
+  tryApi();
+
+  // Auto-refresh
+  setInterval(function(){
+    if(document.hidden) return;
+    fetch('/api/history').then(function(r){ return r.json(); }).then(function(data){
+      allData = data.items || data;
+      var filtered = applyFilters(allData);
+      render(filtered);
+      updateStats(allData);
+    }).catch(function(){});
+  }, 30000);
+}
+
+function initRaw(){
+  fetch(RAW_URL).then(function(r){
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function(data){
+    allData = Array.isArray(data) ? data : (data.items || []);
+    loading.style.display = 'none';
+    loadAndRender();
+  }).catch(function(){
+    loading.style.display = 'none';
+    errorState.style.display = 'block';
+    document.querySelector('.error-state p').innerHTML = 'Could not load download history from GitHub.';
+  });
+
+  setInterval(function(){
+    if(document.hidden) return;
+    fetch(RAW_URL).then(function(r){ return r.json(); }).then(function(data){
+      allData = Array.isArray(data) ? data : (data.items || []);
+      var filtered = applyFilters(allData);
+      render(filtered);
+      updateStats(allData);
+    }).catch(function(){});
+  }, 60000);
+}
+
+if(isLocal){
+  initLocal();
+} else {
+  initRaw();
+}
 
 // Filter events
-searchInput.addEventListener('input', () => {
+searchInput.addEventListener('input', function(){
   clearTimeout(timer);
-  timer = setTimeout(() => { currentPage = 1; fetchData(); }, 300);
+  timer = setTimeout(function(){
+    currentPage = 1;
+    render(applyFilters(allData));
+  }, 300);
 });
-channelFilter.addEventListener('change', () => { currentPage = 1; fetchData(); });
-sortSelect.addEventListener('change', () => { currentPage = 1; fetchData(); });
-membershipCheck.addEventListener('change', () => { currentPage = 1; fetchData(); });
 
-// Auto-refresh stats every 10s, full refresh every 30s
-setInterval(() => {
-  fetch('/api/stats').then(r=>r.json()).then(stats => {
-    $('#stat-files').textContent = stats.total_files;
-    $('#stat-size').textContent = stats.total_size_str;
-    $('#stat-channels').textContent = stats.channel_count;
-  }).catch(()=>{});
-}, 10000);
+channelFilter.addEventListener('change', function(){
+  currentPage = 1;
+  render(applyFilters(allData));
+});
 
-setInterval(() => {
-  if(document.hidden) return;
-  fetchData();
-}, 30000);
+sortSelect.addEventListener('change', function(){
+  currentPage = 1;
+  render(applyFilters(allData));
+});
+
+membershipCheck.addEventListener('change', function(){
+  currentPage = 1;
+  render(applyFilters(allData));
+});
 
 })();
 </script>

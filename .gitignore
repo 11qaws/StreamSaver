@@ -5,7 +5,8 @@ __pycache__/
 *.pyc
 
 # Downloads & data
-downloads/
+downloads/**
+!downloads/history.json
 archive.txt
 cookie.txt
 
