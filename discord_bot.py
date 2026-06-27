@@ -9,32 +9,20 @@ import config
 logger = logging.getLogger("StreamSaver.Bot")
 
 
-class StreamSaverBot(commands.Bot):
-    def __init__(self, downloader, cookie_manager):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents)
-        self.dl = downloader
-        self.cm = cookie_manager
+class StreamSaverCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.dl = bot.dl
+        self.cm = bot.cm
         self._channel = None
         self._ready = False
 
         self.dl.on_event(self._on_dl_event)
 
-    async def setup_hook(self):
-        for cmd in [
-            commands.Command(self.cmd_dl, name="dl"),
-            commands.Command(self.cmd_cancel, name="취소"),
-            commands.Command(self.cmd_queue, name="대기열"),
-            commands.Command(self.cmd_status, name="상태"),
-            commands.Command(self.cmd_login, name="로그인"),
-            commands.Command(self.cmd_log, name="로그"),
-        ]:
-            self.add_command(cmd)
-
+    @commands.Cog.listener()
     async def on_ready(self):
-        logger.info(f"Bot logged in as {self.user}")
-        self._channel = self.get_channel(config.DISCORD_CHANNEL_ID)
+        logger.info(f"Bot logged in as {self.bot.user}")
+        self._channel = self.bot.get_channel(config.DISCORD_CHANNEL_ID)
         if self._channel:
             await self._channel.send("StreamSaver 온라인")
             self._ready = True
@@ -43,7 +31,7 @@ class StreamSaverBot(commands.Bot):
         if not self._ready or not self._channel:
             return
         coro = self._dispatch_dl_event(event, task, **kw)
-        asyncio.run_coroutine_threadsafe(coro, self.loop)
+        asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
 
     async def _dispatch_dl_event(self, event, task, **kw):
         if event == "queued":
@@ -78,11 +66,13 @@ class StreamSaverBot(commands.Bot):
             msg = kw.get("message", "")
             await self._channel.send(f"⚠️ {msg}")
 
+    @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot:
             return
-        await self.process_commands(message)
+        await self.bot.process_commands(message)
 
+    @commands.command(name="dl")
     async def cmd_dl(self, ctx, url: str = None):
         if not url:
             await ctx.send("사용법: `!dl <YouTube URL>`")
@@ -92,6 +82,7 @@ class StreamSaverBot(commands.Bot):
         task = self.dl.enqueue(url, ctx.author.name)
         await ctx.send(f"✅ 대기열 추가됨 (#{task.id})")
 
+    @commands.command(name="취소")
     async def cmd_cancel(self, ctx, task_id: int = None):
         if not task_id:
             await ctx.send("사용법: `!취소 <작업번호>`")
@@ -101,6 +92,7 @@ class StreamSaverBot(commands.Bot):
         else:
             await ctx.send(f"❌ #{task_id} 찾을 수 없음")
 
+    @commands.command(name="대기열")
     async def cmd_queue(self, ctx):
         s = self.dl.status()
         lines = []
@@ -116,6 +108,7 @@ class StreamSaverBot(commands.Bot):
             lines.append("📭 대기열 없음")
         await ctx.send("\n".join(lines))
 
+    @commands.command(name="상태")
     async def cmd_status(self, ctx):
         cs = self.cm.get_status()
         ds = self.dl.status()
@@ -126,12 +119,13 @@ class StreamSaverBot(commands.Bot):
             f"⬇️ 진행 중: {len(ds['active'])}개\n"
             f"📋 대기: {ds['queued']}개")
 
+    @commands.command(name="로그인")
     async def cmd_login(self, ctx):
         await ctx.send(
             "🌐 Edge가 실행됩니다. YouTube에 로그인한 후 "
             "**Edge를 완전히 종료**해 주세요.")
         self.cm.login_flow(on_done=lambda ok: asyncio.run_coroutine_threadsafe(
-            self._login_result(ctx, ok), self.loop))
+            self._login_result(ctx, ok), self.bot.loop))
 
     async def _login_result(self, ctx, ok):
         if ok:
@@ -139,6 +133,7 @@ class StreamSaverBot(commands.Bot):
         else:
             await ctx.send("❌ 로그인 실패. 다시 시도해 주세요.")
 
+    @commands.command(name="로그")
     async def cmd_log(self, ctx):
         log_dir = config.LOG_DIR
         if not os.path.isdir(log_dir):
@@ -162,3 +157,15 @@ class StreamSaverBot(commands.Bot):
             await ctx.send(f"**최근 로그 ({logs[0]})**\n{text}")
         except Exception as e:
             await ctx.send(f"❌ 로그 읽기 오류: {e}")
+
+
+class StreamSaverBot(commands.Bot):
+    def __init__(self, downloader, cookie_manager):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix="!", intents=intents)
+        self.dl = downloader
+        self.cm = cookie_manager
+
+    async def setup_hook(self):
+        await self.add_cog(StreamSaverCog(self))

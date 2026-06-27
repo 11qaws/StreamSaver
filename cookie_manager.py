@@ -2,11 +2,14 @@ import subprocess
 import time
 import threading
 import os
+import platform
 import logging
 
 import config
 
 logger = logging.getLogger("StreamSaver.CookieManager")
+
+IS_WINDOWS = platform.system() == "Windows"
 
 
 class CookieManager:
@@ -19,6 +22,9 @@ class CookieManager:
         self._on_status_change = callback
 
     def start_edge_minimized(self):
+        if not IS_WINDOWS:
+            logger.info("Edge management not supported on this OS")
+            return False
         try:
             subprocess.Popen(
                 ["start", "/min", "msedge", "--no-first-run",
@@ -31,6 +37,8 @@ class CookieManager:
             return False
 
     def kill_edge(self):
+        if not IS_WINDOWS:
+            return True
         try:
             subprocess.run(
                 ["taskkill", "/f", "/im", "msedge.exe"],
@@ -46,6 +54,10 @@ class CookieManager:
             return False
 
     def extract_cookies(self):
+        if not IS_WINDOWS:
+            self.cookie_valid = os.path.exists(config.COOKIE_FILE) and os.path.getsize(config.COOKIE_FILE) > 200
+            return self.cookie_valid
+
         cmd = [
             config.YT_DLP,
             "--cookies-from-browser", f"edge:{config.EDGE_PROFILE}",
@@ -63,8 +75,7 @@ class CookieManager:
                 return True
             logger.warning(
                 f"Cookie file too small: "
-                f"{os.path.getsize(config.COOKIE_FILE) if os.path.exists(config.COOKIE_FILE) else 0}B, "
-                f"stderr: {result.stderr[:200]}")
+                f"{os.path.getsize(config.COOKIE_FILE) if os.path.exists(config.COOKIE_FILE) else 0}B")
             self.cookie_valid = False
             return False
         except Exception as e:
@@ -77,7 +88,8 @@ class CookieManager:
             logger.info("Cookie refresh cycle starting...")
             self.kill_edge()
             success = self.extract_cookies()
-            self.start_edge_minimized()
+            if IS_WINDOWS:
+                self.start_edge_minimized()
             if success:
                 logger.info("Cookie refresh completed successfully")
             else:
@@ -87,6 +99,10 @@ class CookieManager:
             return success
 
     def start_auto_refresh(self):
+        if not IS_WINDOWS:
+            logger.info("Auto cookie refresh disabled on this OS")
+            return
+
         def _loop():
             time.sleep(30)
             self.refresh_cookies()
@@ -99,6 +115,12 @@ class CookieManager:
         logger.info("Auto cookie refresh started every 30min")
 
     def login_flow(self, on_done=None):
+        if not IS_WINDOWS:
+            logger.info("Login flow not supported on this OS")
+            if on_done:
+                on_done(False)
+            return
+
         def _wait_for_close():
             self.kill_edge()
             extant = self.extract_cookies()
@@ -143,4 +165,5 @@ class CookieManager:
                 os.path.exists(config.COOKIE_FILE) and
                 os.path.getsize(config.COOKIE_FILE) > 100
             ),
+            "platform": "windows" if IS_WINDOWS else "linux",
         }

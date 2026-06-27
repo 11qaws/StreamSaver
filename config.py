@@ -1,4 +1,5 @@
 import os
+import platform
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,10 +17,16 @@ HISTORY_FILE = os.path.join(DOWNLOAD_DIR, "history.json")
 INDEX_HTML = os.path.join(BASE_DIR, "index.html")
 WEB_PORT = 8080
 
-YT_DLP = r"E:\FFMPEG\bin\yt-dlp.exe"
-RCLONE = r"E:\FFMPEG\bin\rclone.exe"
-FFMPEG = r"E:\FFMPEG\bin\ffmpeg.exe"
-EDGE_PROFILE = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\User Data")
+if platform.system() == "Windows":
+    YT_DLP = r"E:\FFMPEG\bin\yt-dlp.exe"
+    RCLONE = r"E:\FFMPEG\bin\rclone.exe"
+    FFMPEG = r"E:\FFMPEG\bin\ffmpeg.exe"
+    EDGE_PROFILE = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\User Data")
+else:
+    YT_DLP = "/home/qumin/.local/bin/yt-dlp"
+    RCLONE = "rclone"
+    FFMPEG = "/home/qumin/bin/ffmpeg"
+    EDGE_PROFILE = ""
 
 MAX_PARALLEL = 5
 PROGRESS_INTERVAL = 7
