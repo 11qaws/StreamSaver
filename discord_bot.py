@@ -157,6 +157,8 @@ class StreamSaverCog(commands.Cog):
     @app_commands.command(name="cancel", description="다운로드 작업 취소")
     @app_commands.describe(task_id="취소할 작업 (목록에서 선택)")
     async def cmd_cancel(self, interaction: discord.Interaction, task_id: int):
+        if await self._wrong_channel(interaction):
+            return
         if self.dl.cancel(task_id):
             await interaction.response.send_message(f"⏹️ #{task_id} 취소 중...")
         else:
@@ -225,6 +227,8 @@ class StreamSaverCog(commands.Cog):
 
     @app_commands.command(name="login", description="YouTube 로그인 (멤버십 다운로드용)")
     async def cmd_login(self, interaction: discord.Interaction):
+        if await self._wrong_channel(interaction):
+            return
         if self.cm._login_lock.locked():
             await interaction.response.send_message(
                 "⏳ 이미 로그인 진행 중입니다.", ephemeral=True)
@@ -270,6 +274,8 @@ class StreamSaverCog(commands.Cog):
 
     @app_commands.command(name="restart", description="headless Edge CDP 재시작")
     async def cmd_edge_restart(self, interaction: discord.Interaction):
+        if await self._wrong_channel(interaction):
+            return
         await interaction.response.defer(thinking=True)
 
         def _restart():
@@ -309,6 +315,8 @@ class StreamSaverCog(commands.Cog):
 
     @app_commands.command(name="help", description="StreamSaver 명령어 안내")
     async def cmd_help(self, interaction: discord.Interaction):
+        if await self._wrong_channel(interaction):
+            return
         await interaction.response.send_message(
             "**StreamSaver 명령어**\n"
             "`/dl url` — YouTube 다운로드\n"
@@ -326,8 +334,7 @@ class StreamSaverCog(commands.Cog):
 class StreamSaverBot(commands.Bot):
     def __init__(self, downloader, cookie_manager, gui=None):
         intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(command_prefix=(), intents=intents)
         self.dl  = downloader
         self.cm  = cookie_manager
         self.gui = gui
