@@ -9,6 +9,8 @@ downloads/**
 !downloads/history.json
 archive.txt
 cookie.txt
+bot.pid
+bot_edge.lock
 
 # Logs
 logs/

@@ -1,7 +1,9 @@
 import os
 import sys
 import traceback
+import asyncio
 import logging
+import discord
 from logging.handlers import TimedRotatingFileHandler
 
 import config
@@ -12,6 +14,47 @@ from gui import GUIManager
 from web_server import start as start_web
 
 logger = logging.getLogger("StreamSaver")
+PID_FILE = os.path.join(config.BASE_DIR, "bot.pid")
+
+
+def check_single_instance():
+    if not os.path.exists(PID_FILE):
+        return True
+    try:
+        with open(PID_FILE) as f:
+            old_pid = int(f.read().strip())
+        if IS_WINDOWS:
+            import subprocess
+            r = subprocess.run(
+                ["tasklist", "/fi", f"PID eq {old_pid}"],
+                capture_output=True, text=True, timeout=5)
+            for line in r.stdout.splitlines():
+                if str(old_pid) in line and ("python" in line.lower()):
+                    logger.error("Bot already running (PID: %d). Exiting.", old_pid)
+                    return False
+        else:
+            os.kill(old_pid, 0)
+            logger.error("Bot already running (PID: %d). Exiting.", old_pid)
+            return False
+    except (ValueError, ProcessLookupError, Exception):
+        pass
+    return True
+
+
+def write_pid():
+    try:
+        with open(PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+    except Exception:
+        pass
+
+
+def remove_pid():
+    try:
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+    except Exception:
+        pass
 
 
 def setup_logging():
@@ -62,13 +105,17 @@ def restore_sleep():
 
 def main():
     setup_logging()
-    logger.info("StreamSaver starting...")
+    logger.info("StreamSaver starting... (PID: %d)", os.getpid())
+
+    if not check_single_instance():
+        sys.exit(0)
 
     if not config.DISCORD_TOKEN:
         logger.error("DISCORD_TOKEN not set in .env")
         print("ERROR: DISCORD_TOKEN not set. Copy .env.example to .env and add your token.")
         sys.exit(1)
 
+    write_pid()
     prevent_sleep()
     start_web()
 
@@ -101,17 +148,28 @@ def main():
     gui.notify("StreamSaver", "봇이 시작되었습니다")
 
     try:
-        bot.run(config.DISCORD_TOKEN)
+        if IS_WINDOWS:
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        bot.run(config.DISCORD_TOKEN, log_handler=None)
     except KeyboardInterrupt:
         logger.info("Shutdown requested")
-        sys.exit(42)
+    except discord.PrivilegedIntentsRequired:
+        logger.critical("Privileged intents not enabled. Enable MESSAGE CONTENT INTENT in Discord Developer Portal.")
+        sys.exit(1)
+    except discord.LoginFailure:
+        logger.critical("Login failed. Check DISCORD_TOKEN in .env")
+        sys.exit(1)
     except Exception as e:
         logger.critical("Bot crashed: %s", traceback.format_exc())
         sys.exit(1)
+    else:
+        logger.warning("Bot.run() returned without exception (unexpected)")
+        sys.exit(43)
     finally:
         cm.stop()
         restore_sleep()
         _clear_lock()
+        remove_pid()
         logger.info("StreamSaver stopped")
 
 
