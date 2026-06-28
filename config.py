@@ -1,8 +1,9 @@
 import os
 import platform
+import shutil
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DISCORD_CHANNEL_ID = 1520389415564742726
@@ -21,7 +22,7 @@ if platform.system() == "Windows":
     YT_DLP = r"E:\FFMPEG\bin\yt-dlp.exe"
     RCLONE = r"E:\FFMPEG\bin\rclone.exe"
     FFMPEG = r"E:\FFMPEG\bin\ffmpeg.exe"
-    EDGE_PATH = r"E:\FFMPEG\edge_portable\msedge.exe"
+    EDGE_PATH = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
     BOT_EDGE_PROFILE = r"E:\FFMPEG\edge_bot_profile"
 else:
     YT_DLP = "/home/qumin/.local/bin/yt-dlp"
@@ -52,3 +53,6 @@ UPLOAD_RULES = {
 
 SHACHIMU_NAMES = ["shachi too", "shachimu", "@shachitoo"]
 SHACHIMU_CHANNEL_ID = ""
+
+# yt-dlp EJS n challenge 솔버용 Node.js 경로 (없으면 빈 문자열)
+NODE_JS = shutil.which('node') or ''

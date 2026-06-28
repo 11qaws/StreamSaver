@@ -12,6 +12,7 @@ from datetime import datetime
 import config
 
 logger = logging.getLogger("StreamSaver.Downloader")
+_NW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)  # CMD 창 숨김
 
 
 class TaskStatus(Enum):
@@ -31,6 +32,7 @@ class DownloadTask:
         self.progress = 0.0
         self.speed = ""
         self.eta = ""
+        self.downloaded = ""   # 라이브 스트림용 누적 수신량 (예: "145.2MiB")
         self.info = None
         self.state = None
         self.state_info = None
@@ -68,43 +70,78 @@ class DownloadManager:
             self._counter += 1
             return self._counter
 
-    def get_info(self, url):
-        cmd = [config.YT_DLP, "--no-download", "--dump-json",
-               "--no-warnings", url]
-        if self.cm and self.cm.cookie_valid and os.path.exists(config.COOKIE_FILE):
-            cmd.extend(["--cookies", config.COOKIE_FILE])
+    def _cookie_args(self):
+        if (self.cm and self.cm.cookie_valid
+                and os.path.exists(config.COOKIE_FILE)):
+            return ["--cookies", config.COOKIE_FILE]
+        return []
+
+    def _js_runtime_args(self):
+        """Node.js 경로가 있으면 --js-runtimes 반환 (yt-dlp EJS n challenge 해결)"""
+        if config.NODE_JS:
+            return ["--js-runtimes", f"node:{config.NODE_JS}"]
+        return []
+
+    def _run_ytdlp_info(self, url, extra_args):
+        # -J (--dump-single-json): 포맷 선택 없이 전체 info 덤프 → format unavailable 오류 없음
+        # --js-runtimes: Node.js로 YouTube n challenge 해결 (없으면 이미지만 반환)
+        cmd = [config.YT_DLP, "-J", "--no-warnings", "--no-config",
+               *self._js_runtime_args(), *extra_args, url]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True,
-                                    timeout=30)
-            if result.returncode == 0 and result.stdout:
-                return json.loads(result.stdout.strip().split("\n")[0])
-            err = result.stderr[:300].lower()
-            if "sign in" in err or "login required" in err or "cookie" in err:
-                self._emit("warning", None,
-                           message="🔑 YouTube 쿠키가 만료되었습니다. `!로그인`을 실행해 주세요.")
-            logger.error(f"get_info failed: {result.stderr[:300]}")
-            return None
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
+                               creationflags=_NW)
+            if r.returncode == 0 and r.stdout:
+                return json.loads(r.stdout.strip().split("\n")[0]), r.stderr
+            return None, r.stderr
         except Exception as e:
-            logger.error(f"get_info error: {e}")
-            return None
+            return None, str(e)
+
+    def get_info(self, url):
+        """반환: (info | None, use_cookies: bool, last_err: str)"""
+        ck = self._cookie_args()
+
+        # 1) 쿠키 없이 — yt-dlp 클라이언트 자동 선택 (공개 영상)
+        # 2) 쿠키 + web 클라이언트 — 멤버십 메타데이터 추출
+        #    (PO Token은 실제 스트리밍 시에만 필요, info 추출엔 불필요)
+        attempts = [([], False), (ck, True)]
+
+        err = ""
+        for args, used_cookies in attempts:
+            if used_cookies and not ck:
+                continue
+            info, err = self._run_ytdlp_info(url, args)
+            if info:
+                logger.info("get_info OK (cookies=%s)", used_cookies)
+                return info, used_cookies, ""
+            logger.warning("get_info failed (cookies=%s): %s", used_cookies, err[:200])
+
+        err_low = err[:300].lower()
+        if "sign in" in err_low or "login required" in err_low or "this video is only" in err_low:
+            self._emit("warning", None,
+                       message="🔑 YouTube 쿠키가 만료되었습니다. `!로그인`을 실행해 주세요.")
+        logger.error("get_info all failed: %s", err[:300])
+        return None, False, err[:200]
 
     def classify(self, info):
         if not info:
             return ("error", "영상 정보를 가져올 수 없습니다", False)
 
-        status = info.get("status") or info.get("live_status") or ""
-        if status in ("private", "unavailable", "deleted", "removed"):
+        live_status = info.get("live_status") or info.get("status") or ""
+        availability = info.get("availability") or ""
+
+        if live_status in ("private", "unavailable"):
             return ("private", "비공개 또는 삭제된 영상입니다", False)
-        if status == "upcoming":
+        if live_status == "is_upcoming":
             return ("upcoming", "아직 시작하지 않은 방송입니다", False)
-        if status in ("is_live", "live", "post_live", "was_live"):
-            return ("live", None, False)
 
-        if (info.get("availability") == "member_only" or
-                info.get("is_membership_video")):
-            return ("membership", None, True)
+        is_mem = (availability == "member_only" or bool(info.get("is_membership_video")))
 
-        return ("normal", None, False)
+        # is_live / post_live: 방송 중 또는 처리 중 → --live-from-start 필요
+        # was_live / None / 그 외: 이미 처리된 VOD → 일반 다운로드
+        if live_status in ("is_live", "live", "post_live"):
+            return ("live", None, is_mem)
+
+        return ("normal", None, is_mem)
 
     @staticmethod
     def _sanitize(name):
@@ -177,145 +214,143 @@ class DownloadManager:
             self.sem.release()
             self._kick()
 
+    def _build_dl_cmd(self, task, template, qual, use_cookies, state):
+        ck = self._cookie_args() if use_cookies else []
+        cmd = [
+            config.YT_DLP,
+            "-o", template,
+            "--no-overwrites",
+            "--merge-output-format", "mp4",
+            "--ffmpeg-location", config.FFMPEG,
+            "--progress", "--newline", "--no-warnings",
+            "--retries", "10",
+            "--extractor-retries", "3",
+            "--compat-options", "no-live-chat",
+            "-f", qual,
+            *self._js_runtime_args(),
+            *ck,
+        ]
+        if state == "live":
+            cmd.append("--live-from-start")
+        cmd.append(task.url)
+        return cmd
+
+    def _run_dl(self, task, cmd):
+        """Popen으로 다운로드 실행. 완료 시 returncode 반환."""
+        task.process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, creationflags=_NW)
+
+        last_notify = time.time()
+        for line in iter(task.process.stdout.readline, ""):
+            if task.cancelled:
+                task.process.terminate()
+                return -1
+            m = re.search(r"(\d+\.?\d*)%", line)
+            if m:
+                task.progress = float(m.group(1))
+            m = re.search(r"at\s+([\d.]+[KMGTP]?i?B/s)", line)
+            if m:
+                task.speed = m.group(1)
+            m = re.search(r"ETA\s+(\S+)", line)
+            if m:
+                task.eta = m.group(1)
+            # 라이브 스트림: "[download] 145.2MiB at ..." 패턴에서 수신량 파싱
+            m = re.search(r"\[download\]\s+([\d.]+\s*[KMGTPkmg]i?B)\s+at\b", line)
+            if m:
+                task.downloaded = m.group(1).strip()
+            if time.time() - last_notify >= config.PROGRESS_INTERVAL:
+                self._emit("progress", task)
+                last_notify = time.time()
+
+        task.process.wait()
+        return task.process.returncode
+
     def _download(self, task):
         task.status = TaskStatus.GETTING_INFO
         self._emit("info_start", task)
 
-        info = self.get_info(task.url)
-        if not info:
-            # Retry with android client fallback for n-challenge
-            logger.info("Retrying info fetch with android client...")
-            cmd = [config.YT_DLP, "--no-download", "--dump-json",
-                   "--no-warnings",
-                   "--extractor-args", "youtube:player_client=android",
-                   task.url]
-            if os.path.exists(config.COOKIE_FILE):
-                cmd.extend(["--cookies", config.COOKIE_FILE])
-            try:
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=30)
-                if result.returncode == 0 and result.stdout:
-                    info = json.loads(result.stdout.strip().split("\n")[0])
-            except Exception:
-                pass
+        info, used_cookies, info_err = self.get_info(task.url)
 
         if not info:
             task.status = TaskStatus.FAILED
-            task.error = "영상 정보를 가져올 수 없습니다"
+            task.error = f"영상 정보 조회 실패: {info_err}" if info_err else "영상 정보를 가져올 수 없습니다"
             self._emit("failed", task)
             return
 
         task.info = info
         state, state_info, is_mem = self.classify(info)
-        task.state = state
+        task.state      = state
         task.state_info = state_info
         task.is_membership = is_mem
 
         if state in ("error", "private", "upcoming"):
             task.status = TaskStatus.FAILED
-            task.error = state_info
+            task.error  = state_info
             self._emit("failed", task)
             return
 
         if self._in_archive(task.url, info.get("id", "")):
             task.status = TaskStatus.FAILED
-            task.error = "이미 다운로드한 영상입니다"
+            task.error  = "이미 다운로드한 영상입니다"
             self._emit("failed", task)
             return
 
-        vid = info.get("id", "")
+        vid      = info.get("id", "")
         template = self.output_template(info, is_mem)
         task.status = TaskStatus.DOWNLOADING
         self._emit("start", task)
 
-        for attempt in range(config.RETRY_LIMIT):
+        # get_info에서 결정한 쿠키 전략 그대로 품질만 낮춰가며 재시도
+        retry_plan = [(q, used_cookies) for q in config.QUALITY_PREFERENCES]
+
+        for attempt, (qual, ck) in enumerate(retry_plan):
             if task.cancelled:
                 task.status = TaskStatus.CANCELLED
                 self._emit("cancelled", task)
                 return
 
-            qual = config.QUALITY_PREFERENCES[
-                min(attempt, len(config.QUALITY_PREFERENCES) - 1)]
-            cmd = [
-                config.YT_DLP,
-                "-o", template,
-                "--no-overwrites",
-                "--merge-output-format", "mp4",
-                "--ffmpeg-location", config.FFMPEG,
-                "--progress", "--newline", "--no-warnings",
-                "--retries", "10",
-                "--extractor-retries", "3",
-                "--compat-options", "no-live-chat",
-                "-f", qual,
-            ]
-            if os.path.exists(config.COOKIE_FILE):
-                cmd.extend(["--cookies", config.COOKIE_FILE])
-            if state == "live":
-                cmd.append("--live-from-start")
-            cmd.append(task.url)
+            cmd = self._build_dl_cmd(task, template, qual, ck, state)
+            logger.info("DL attempt %d: qual=%s cookies=%s", attempt + 1, qual, ck)
 
             try:
-                flags = 0
-                if hasattr(subprocess, "CREATE_NO_WINDOW"):
-                    flags = subprocess.CREATE_NO_WINDOW
-                task.process = subprocess.Popen(
-                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, bufsize=1, creationflags=flags)
-
-                last_notify = time.time()
-                for line in iter(task.process.stdout.readline, ""):
-                    if task.cancelled:
-                        task.process.terminate()
-                        task.status = TaskStatus.CANCELLED
-                        self._emit("cancelled", task)
-                        return
-                    m = re.search(r"(\d+\.?\d*)%", line)
-                    if m:
-                        task.progress = float(m.group(1))
-                    m = re.search(r"at\s+([\d.]+[KMGTP]?i?B/s)", line)
-                    if m:
-                        task.speed = m.group(1)
-                    m = re.search(r"ETA\s+(\S+)", line)
-                    if m:
-                        task.eta = m.group(1)
-
-                    now = time.time()
-                    if now - last_notify >= config.PROGRESS_INTERVAL:
-                        self._emit("progress", task)
-                        last_notify = now
-
-                task.process.wait()
-                rc = task.process.returncode
-                if rc == 0:
-                    task.status = TaskStatus.COMPLETED
-                    self._add_archive(task.url, vid)
-                    self._emit("completed", task)
-                    self._post_download(task, info, is_mem)
-                    return
-                else:
-                    if attempt < config.RETRY_LIMIT - 1:
-                        backoff = config.RETRY_BACKOFF[
-                            min(attempt, len(config.RETRY_BACKOFF) - 1)]
-                        reason = (f"다운로드 실패 (rc={rc}), "
-                                  f"품질 {qual} → 다음 단계, "
-                                  f"{backoff}초 후 재시도")
-                        logger.warning(reason)
-                        if attempt > 0:
-                            self._emit("warning", task, message=reason)
-                        time.sleep(backoff)
-                    else:
-                        task.status = TaskStatus.FAILED
-                        task.error = f"모든 품질 단계 실패 (rc={rc})"
-                        self._emit("failed", task)
+                rc = self._run_dl(task, cmd)
             except Exception as e:
-                logger.error(f"Download exception: {e}")
+                logger.error("Download exception: %s", e)
                 task.status = TaskStatus.FAILED
-                task.error = str(e)
+                task.error  = str(e)
                 self._emit("failed", task)
                 return
 
-    def _post_download(self, task, info, is_membership):
-        fname = self._get_output_filename(task, info, is_membership)
+            if task.cancelled:
+                task.status = TaskStatus.CANCELLED
+                self._emit("cancelled", task)
+                return
+
+            if rc == 0:
+                task.status = TaskStatus.COMPLETED
+                self._add_archive(task.url, vid)
+                self._emit("completed", task)
+                self._post_download(task, info, is_mem, used_cookies)
+                return
+
+            # 마지막 시도가 아니면 잠시 대기 후 다음 시도
+            if attempt < len(retry_plan) - 1:
+                backoff = config.RETRY_BACKOFF[
+                    min(attempt // 2, len(config.RETRY_BACKOFF) - 1)]
+                reason = (f"다운로드 실패 (rc={rc}), "
+                          f"qual={qual} cookies={ck} → 재시도 {backoff}초 후")
+                logger.warning(reason)
+                if attempt >= 2:
+                    self._emit("warning", task, message=reason)
+                time.sleep(backoff)
+
+        task.status = TaskStatus.FAILED
+        task.error  = f"모든 시도 실패"
+        self._emit("failed", task)
+
+    def _post_download(self, task, info, is_membership, use_cookies):
+        fname = self._get_output_filename(task, info, is_membership, use_cookies)
         if fname:
             task.file_path = fname
 
@@ -397,36 +432,38 @@ class DownloadManager:
         try:
             subprocess.run(
                 ["git", "add", "downloads/history.json"],
-                cwd=config.BASE_DIR, capture_output=True, timeout=10)
+                cwd=config.BASE_DIR, capture_output=True, timeout=10,
+                creationflags=_NW)
             r = subprocess.run(
                 ["git", "diff", "--cached", "--quiet"],
-                cwd=config.BASE_DIR, capture_output=True, timeout=10)
+                cwd=config.BASE_DIR, capture_output=True, timeout=10,
+                creationflags=_NW)
             if r.returncode != 0:
                 subprocess.run(
                     ["git", "commit", "-m", "Update download history"],
-                    cwd=config.BASE_DIR, capture_output=True, timeout=10)
+                    cwd=config.BASE_DIR, capture_output=True, timeout=10,
+                    creationflags=_NW)
                 subprocess.run(
                     ["git", "push"],
-                    cwd=config.BASE_DIR, capture_output=True, timeout=30)
+                    cwd=config.BASE_DIR, capture_output=True, timeout=30,
+                    creationflags=_NW)
                 logger.info("History synced to GitHub")
             else:
                 logger.debug("No history changes to sync")
         except Exception as e:
             logger.warning(f"GitHub sync failed: {e}")
 
-    def _get_output_filename(self, task, info, is_membership):
+    def _get_output_filename(self, task, info, is_membership, use_cookies):
         template = self.output_template(info, is_membership)
+        ck = self._cookie_args() if use_cookies else []
         try:
-            cmd = [config.YT_DLP, "--print", "filename",
-                   "-o", template, task.url]
-            if os.path.exists(config.COOKIE_FILE):
-                cmd.extend(["--cookies", config.COOKIE_FILE])
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=15)
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
+            cmd = [config.YT_DLP, "--print", "filename", "-o", template, *ck, task.url]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15,
+                               creationflags=_NW)
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
         except Exception as e:
-            logger.debug(f"Filename detection failed: {e}")
+            logger.debug("Filename detection failed: %s", e)
         return None
 
     def _upload(self, fpath, dest):
@@ -434,7 +471,7 @@ class DownloadManager:
             logger.info(f"Uploading {fpath} → {dest}")
             result = subprocess.run(
                 [config.RCLONE, "copy", fpath, dest, "--verbose"],
-                capture_output=True, text=True, timeout=7200)
+                capture_output=True, text=True, timeout=7200, creationflags=_NW)
             if result.returncode == 0:
                 logger.info(f"Upload complete: {fpath}")
             else:
@@ -461,17 +498,21 @@ class DownloadManager:
 
     def status(self):
         with self._lock:
+            queue_items = list(self.queue.queue)   # deque snapshot under lock
             return {
                 "active": [
                     {
-                        "id": t.id,
-                        "url": t.url,
-                        "progress": t.progress,
-                        "speed": t.speed,
-                        "eta": t.eta,
-                        "status": t.status.value,
+                        "id":         t.id,
+                        "url":        t.url,
+                        "progress":   t.progress,
+                        "speed":      t.speed,
+                        "eta":        t.eta,
+                        "downloaded": t.downloaded,
+                        "state":      t.state,
+                        "status":     t.status.value,
                     }
                     for t in self.active
                 ],
-                "queued": self.queue.qsize(),
+                "queued":     self.queue.qsize(),
+                "queue_list": [{"id": t.id, "url": t.url} for t in queue_items],
             }

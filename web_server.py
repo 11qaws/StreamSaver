@@ -10,6 +10,14 @@ import config
 logger = logging.getLogger("StreamSaver.Web")
 
 _cache = {"history": None, "mtime": 0}
+_cm = None
+_dm = None
+
+
+def set_context(cm, dm):
+    global _cm, _dm
+    _cm = cm
+    _dm = dm
 
 
 def _load_history():
@@ -40,6 +48,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._history(qs)
             elif path == "/api/stats":
                 self._stats()
+            elif path == "/api/status":
+                self._live_status()
             else:
                 self.send_error(404)
         except Exception as e:
@@ -73,6 +83,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
+
+    def _live_status(self):
+        cm = _cm
+        dm = _dm
+        cs = cm.get_status() if cm else {}
+        ds = dm.status() if dm else {}
+        self._json({
+            "cookie_valid": cs.get("cookie_valid", False),
+            "cookie_file": cs.get("cookie_file", False),
+            "edge_running": cs.get("edge_running", False),
+            "active": ds.get("active", []),
+            "queued": ds.get("queued", 0),
+        })
 
     def _history(self, qs):
         history = _load_history()
@@ -158,8 +181,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         logger.debug(f"HTTP: {fmt % args}")
 
 
-def start():
+def start(ctx=None):
+    global _cm, _dm
+    if ctx:
+        _cm = ctx.cm
+        _dm = ctx.dm
     server = http.server.HTTPServer(("0.0.0.0", config.WEB_PORT), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    logger.info(f"Web server started → http://localhost:{config.WEB_PORT}")
+    logger.info(f"Web server → http://localhost:{config.WEB_PORT}")
