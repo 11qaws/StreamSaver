@@ -43,45 +43,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "StreamSaver"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
 
 [Code]
-var
-  EnvPage: TWizardPage;
-  RelayURLEdit: TEdit;
-  RelaySecretEdit: TEdit;
-
-procedure InitializeWizard;
-var
-  lbl1, lbl2: TLabel;
-begin
-  EnvPage := CreateCustomPage(wpSelectDir, '서버 연결 정보', '릴레이 서버 정보를 확인하세요. (기본값 그대로 사용하시면 됩니다)');
-
-  lbl1 := TLabel.Create(EnvPage);
-  lbl1.Parent := EnvPage.Surface;
-  lbl1.Caption := '릴레이 서버 주소:';
-  lbl1.Top := 8;
-  lbl1.Left := 0;
-
-  RelayURLEdit := TEdit.Create(EnvPage);
-  RelayURLEdit.Parent := EnvPage.Surface;
-  RelayURLEdit.Top := 28;
-  RelayURLEdit.Left := 0;
-  RelayURLEdit.Width := EnvPage.SurfaceWidth;
-  RelayURLEdit.Text := '{#RelayURL}';
-
-  lbl2 := TLabel.Create(EnvPage);
-  lbl2.Parent := EnvPage.Surface;
-  lbl2.Caption := '비밀 키:';
-  lbl2.Top := 68;
-  lbl2.Left := 0;
-
-  RelaySecretEdit := TEdit.Create(EnvPage);
-  RelaySecretEdit.Parent := EnvPage.Surface;
-  RelaySecretEdit.Top := 88;
-  RelaySecretEdit.Left := 0;
-  RelaySecretEdit.Width := EnvPage.SurfaceWidth;
-  RelaySecretEdit.Text := '{#RelaySecret}';
-  RelaySecretEdit.PasswordChar := '*';
-end;
-
 procedure CreateEnvFile;
 var
   DataDir, EnvPath: String;
@@ -90,8 +51,10 @@ begin
   ForceDirectories(DataDir);
   EnvPath := DataDir + '\.env';
 
-  SaveStringToFile(EnvPath, 'RELAY_SERVER_URL=' + RelayURLEdit.Text + #13#10, False);
-  SaveStringToFile(EnvPath, 'RELAY_SECRET=' + RelaySecretEdit.Text + #13#10, True);
+  if FileExists(EnvPath) then Exit;
+
+  SaveStringToFile(EnvPath, 'RELAY_SERVER_URL={#RelayURL}' + #13#10, False);
+  SaveStringToFile(EnvPath, 'RELAY_SECRET={#RelaySecret}' + #13#10, True);
   SaveStringToFile(EnvPath, 'RELAY_PAIR_CODE=' + #13#10, True);
 end;
 
