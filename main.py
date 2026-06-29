@@ -133,13 +133,14 @@ def setup_logging():
         when="midnight", encoding="utf-8", backupCount=30)
     fh.setFormatter(fmt)
 
-    ch = logging.StreamHandler()
-    ch.setFormatter(fmt)
-
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(fh)
-    root.addHandler(ch)
+
+    if not getattr(sys, 'frozen', False):
+        ch = logging.StreamHandler()
+        ch.setFormatter(fmt)
+        root.addHandler(ch)
 
 
 def startup_check():
