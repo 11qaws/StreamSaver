@@ -1,17 +1,26 @@
 # Environment
 .env
+config_personal.py
 venv/
 __pycache__/
 *.pyc
 
 # Downloads & data
-downloads/**
-!downloads/history.json
+downloads/
 archive.txt
 cookie.txt
 bot.pid
 crash.txt
 bot_edge.lock
+.relay_guild
+watch_channels.json
+
+# Build artifacts
+build/
+dist/
+installer/yt-dlp.exe
+installer/ffmpeg.exe
+installer/Output/
 
 # Logs
 logs/

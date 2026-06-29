@@ -108,6 +108,8 @@ class GUIManager:
         self._start_time      = time.time()
         self._completed       = 0
         self._failed          = 0
+        self._mode            = "relay" if config.RELAY_SERVER_URL else "local"
+        self._update_info     = None   # {"version": ..., "url": ...} or None
 
     # ── 상태 계산 ─────────────────────────────────────────────────────────────
 
@@ -137,8 +139,19 @@ class GUIManager:
 
     # ── 외부에서 호출하는 상태 변경 API ──────────────────────────────────────
 
+    def set_mode(self, mode: str):
+        """'relay' 또는 'local'"""
+        self._mode = mode
+        self._refresh()
+
     def set_bot_connected(self, connected: bool):
         self._bot_connected = connected
+        self._refresh()
+
+    def set_update_available(self, info: dict):
+        self._update_info = info
+        self.notify("StreamSaver 업데이트",
+                    f"v{info['version']} 업데이트가 있습니다. 트레이 메뉴에서 확인하세요.")
         self._refresh()
 
     def set_downloading(self, count: int):
@@ -194,7 +207,8 @@ class GUIManager:
             TrayState.ERROR:       "오류 발생",
             TrayState.OFFLINE:     "봇 미연결",
         }[state]
-        lines = [f"StreamSaver  ·  {label}"]
+        mode_label = "🌐 온라인" if self._mode == "relay" else "💻 로컬"
+        lines = [f"StreamSaver  ·  {mode_label}  ·  {label}"]
 
         # 다운로드 현황
         dm = self.ctx.dm if self.ctx else None
@@ -232,6 +246,29 @@ class GUIManager:
 
     # ── 메뉴 ─────────────────────────────────────────────────────────────────
 
+    def _watcher_items(self):
+        """📡 Unarchived 자동 감지 서브메뉴 — 등록 채널 목록"""
+        import pystray
+        sw = self.ctx.sw if self.ctx else None
+        if sw is None:
+            yield pystray.MenuItem("기능 비활성화", None, enabled=False)
+            return
+        channels = sw.list_channels()
+        if not channels:
+            yield pystray.MenuItem("등록된 채널 없음", None, enabled=False)
+        else:
+            yield pystray.MenuItem(
+                f"감시 중  {len(channels)}채널", None, enabled=False)
+            for _url, info in channels:
+                from stream_watcher import StreamWatcher
+                filt  = info["title_filter"] or "전체"
+                label = StreamWatcher.display_name(info)
+                yield pystray.MenuItem(
+                    f"  • {label}  [{filt}]", None, enabled=False)
+        interval_min = config.WATCH_POLL_INTERVAL // 60
+        yield pystray.MenuItem(
+            f"⏱ {interval_min}분 간격 폴링", None, enabled=False)
+
     def _detail_items(self):
         """📋 상세정보 서브메뉴 — 업타임·디스크·통계"""
         import pystray
@@ -262,7 +299,23 @@ class GUIManager:
         """pystray가 메뉴 표시 시점에 호출 — 매번 최신 상태 반영"""
         import pystray
 
-        # ① 대시보드 (더블클릭 기본 액션)
+        # ① 모드 상태 표시
+        if self._mode == "relay":
+            rc = self.ctx.rc if self.ctx else None
+            if rc and rc.connected:
+                mode_txt = "🌐 온라인 모드  —  연결됨"
+            else:
+                mode_txt = "🔄 온라인 모드  —  접속 시도 중..."
+        else:
+            mode_txt = "💻 로컬 봇 모드" + ("  —  연결됨" if self._bot_connected else "  —  미연결")
+        yield pystray.MenuItem(mode_txt, None, enabled=False)
+        if self._mode == "relay":
+            rc = self.ctx.rc if self.ctx else None
+            if not (rc and rc.connected) and (not rc or rc.needs_pair_code):
+                yield pystray.MenuItem("🔗 서버 연결", self._connect_server)
+        yield pystray.Menu.SEPARATOR
+
+        # ② 대시보드 (더블클릭 기본 액션)
         yield pystray.MenuItem(
             "🌐 대시보드 열기",
             lambda icon, item: webbrowser.open(f"http://localhost:{config.WEB_PORT}"),
@@ -305,6 +358,8 @@ class GUIManager:
                 ["explorer", config.DOWNLOAD_DIR], creationflags=_NW),
         )
         yield pystray.MenuItem("📋 상세정보", pystray.Menu(self._detail_items))
+        yield pystray.MenuItem(
+            "📡 Unarchived 자동 감지", pystray.Menu(self._watcher_items))
         yield pystray.Menu.SEPARATOR
         yield pystray.MenuItem("🔄 봇 재시작", self._on_restart)
         yield pystray.MenuItem(
@@ -313,6 +368,14 @@ class GUIManager:
             checked=lambda item: _autostart_is_enabled(),
         )
         yield pystray.Menu.SEPARATOR
+        if self._update_info:
+            v = self._update_info["version"]
+            yield pystray.MenuItem(
+                f"⬆️ v{v} 업데이트 다운로드",
+                lambda icon, item, u=self._update_info["url"]: self._open_url(u),
+            )
+        yield pystray.MenuItem(
+            f"ℹ️ StreamSaver v{config.APP_VERSION}", None, enabled=False)
         yield pystray.MenuItem("⏹ 종료", self._on_quit)
 
     # ── 트레이 구동 ───────────────────────────────────────────────────────────
@@ -356,6 +419,51 @@ class GUIManager:
 
     # ── 재시작 / 종료 ─────────────────────────────────────────────────────────
 
+    def _connect_server(self, icon, item=None):
+        def _dialog():
+            import tkinter as tk
+            from tkinter import simpledialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            code = simpledialog.askstring(
+                "서버 연결",
+                "Discord에서 /setup 명령어로 받은\n페어링 코드를 입력하세요:\n\n예: ABC-123",
+                parent=root
+            )
+            root.destroy()
+            if not code:
+                return
+            code = code.strip().upper()
+            if not code:
+                return
+            rc = self.ctx.rc if self.ctx else None
+            if rc:
+                rc.set_pair_code(code)
+            self._update_env_key("RELAY_PAIR_CODE", code)
+            self.notify("StreamSaver", f"연결 시도 중... ({code})")
+        threading.Thread(target=_dialog, daemon=True).start()
+
+    def _update_env_key(self, key: str, value: str):
+        env_path = os.path.join(config.BASE_DIR, ".env")
+        try:
+            lines = []
+            found = False
+            if os.path.exists(env_path):
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith(f"{key}="):
+                            lines.append(f"{key}={value}\n")
+                            found = True
+                        else:
+                            lines.append(line)
+            if not found:
+                lines.append(f"{key}={value}\n")
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+        except Exception as e:
+            logger.error("env update error: %s", e)
+
     def _on_restart(self, icon, item=None):
         logger.info("Tray: restart")
         self._running = False
@@ -374,6 +482,10 @@ class GUIManager:
         except Exception as e:
             logger.error("Restart failed: %s", e)
         os._exit(0)
+
+    def _open_url(self, url: str):
+        import webbrowser
+        webbrowser.open(url)
 
     def _on_quit(self, icon, item=None):
         logger.info("Tray: quit")

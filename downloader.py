@@ -236,16 +236,19 @@ class DownloadManager:
         return cmd
 
     def _run_dl(self, task, cmd):
-        """Popen으로 다운로드 실행. 완료 시 returncode 반환."""
+        """Popen으로 다운로드 실행. (returncode, 실제출력파일경로|None) 반환."""
         task.process = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, creationflags=_NW)
 
         last_notify = time.time()
+        captured_file = None   # yt-dlp stdout에서 파싱한 실제 출력 파일
+
         for line in iter(task.process.stdout.readline, ""):
             if task.cancelled:
                 task.process.terminate()
-                return -1
+                return -1, None
+
             m = re.search(r"(\d+\.?\d*)%", line)
             if m:
                 task.progress = float(m.group(1))
@@ -255,16 +258,25 @@ class DownloadManager:
             m = re.search(r"ETA\s+(\S+)", line)
             if m:
                 task.eta = m.group(1)
-            # 라이브 스트림: "[download] 145.2MiB at ..." 패턴에서 수신량 파싱
             m = re.search(r"\[download\]\s+([\d.]+\s*[KMGTPkmg]i?B)\s+at\b", line)
             if m:
                 task.downloaded = m.group(1).strip()
+
+            # 실제 출력 파일명 파싱 — Merger 라인이 최종 파일이므로 우선
+            m = re.search(r'\[Merger\] Merging formats into "(.+?)"', line)
+            if m:
+                captured_file = m.group(1).strip()
+            elif captured_file is None:
+                m = re.search(r'\[download\] Destination: (.+)', line)
+                if m:
+                    captured_file = m.group(1).strip()
+
             if time.time() - last_notify >= config.PROGRESS_INTERVAL:
                 self._emit("progress", task)
                 last_notify = time.time()
 
         task.process.wait()
-        return task.process.returncode
+        return task.process.returncode, captured_file
 
     def _download(self, task):
         task.status = TaskStatus.GETTING_INFO
@@ -314,7 +326,7 @@ class DownloadManager:
             logger.info("DL attempt %d: qual=%s cookies=%s", attempt + 1, qual, ck)
 
             try:
-                rc = self._run_dl(task, cmd)
+                rc, captured_file = self._run_dl(task, cmd)
             except Exception as e:
                 logger.error("Download exception: %s", e)
                 task.status = TaskStatus.FAILED
@@ -331,7 +343,7 @@ class DownloadManager:
                 task.status = TaskStatus.COMPLETED
                 self._add_archive(task.url, vid)
                 self._emit("completed", task)
-                self._post_download(task, info, is_mem, used_cookies)
+                self._post_download(task, info, is_mem, used_cookies, captured_file)
                 return
 
             # 마지막 시도가 아니면 잠시 대기 후 다음 시도
@@ -349,10 +361,33 @@ class DownloadManager:
         task.error  = f"모든 시도 실패"
         self._emit("failed", task)
 
-    def _post_download(self, task, info, is_membership, use_cookies):
-        fname = self._get_output_filename(task, info, is_membership, use_cookies)
+    def _cleanup_fragments(self, vid: str):
+        """라이브 다운로드 후 남은 .part-Frag*.part 임시 파일 삭제"""
+        if not vid:
+            return
+        try:
+            for fname in os.listdir(config.DOWNLOAD_DIR):
+                if vid in fname and ".part-Frag" in fname:
+                    try:
+                        os.remove(os.path.join(config.DOWNLOAD_DIR, fname))
+                        logger.info("Removed fragment: %s", fname)
+                    except Exception as e:
+                        logger.debug("Fragment remove failed: %s", e)
+        except Exception as e:
+            logger.debug("Fragment cleanup error: %s", e)
+
+    def _post_download(self, task, info, is_membership, use_cookies, captured_file=None):
+        # stdout에서 파싱한 실제 파일명 우선, 없으면 yt-dlp 재호출로 예측
+        if captured_file and os.path.exists(captured_file):
+            fname = captured_file
+            logger.debug("file path from stdout: %s", fname)
+        else:
+            fname = self._get_output_filename(task, info, is_membership, use_cookies)
         if fname:
             task.file_path = fname
+
+        if task.state == "live":
+            self._cleanup_fragments(info.get("id", ""))
 
         self._record_history(task, info, is_membership, fname)
         self._sync_to_github()

@@ -19,6 +19,9 @@ from downloader import DownloadManager
 from discord_bot import StreamSaverBot
 from gui import GUIManager
 from web_server import start as start_web
+from stream_watcher import StreamWatcher
+from relay_client import RelayClient
+import updater
 
 logger = logging.getLogger("StreamSaver")
 CRASH_FILE = os.path.join(config.BASE_DIR, "crash.txt")
@@ -83,6 +86,8 @@ class AppContext:
         self.cm  = None
         self.dm  = None
         self.bot = None
+        self.sw  = None
+        self.rc  = None   # RelayClient
         self._shutting_down = False
 
     def cleanup(self):
@@ -90,6 +95,10 @@ class AppContext:
             return
         self._shutting_down = True
         logger.info("Shutting down...")
+        if self.rc:
+            self.rc.stop()
+        if self.sw:
+            self.sw.stop()
         if self.cm:
             self.cm.stop()
         if IS_WINDOWS:
@@ -134,10 +143,11 @@ def setup_logging():
 
 
 def startup_check():
-    if IS_WINDOWS and not os.path.exists(config.EDGE_PATH):
-        logger.error("Edge not found: %s", config.EDGE_PATH)
-        sys.exit(1)
-    logger.info("Edge: %s", config.EDGE_PATH)
+    if IS_WINDOWS:
+        if config.EDGE_PATH:
+            logger.info("Edge: %s", config.EDGE_PATH)
+        else:
+            logger.warning("Edge not found — cookie/membership features disabled")
 
 
 def prevent_sleep():
@@ -162,6 +172,21 @@ def restore_sleep():
 
 # ── 메인 ────────────────────────────────────────────────────────────────────
 
+async def _start_relay(ctx, loop):
+    """릴레이 모드: WebSocket 클라이언트 + StreamWatcher 실행"""
+    ctx.rc.start(loop)
+    if ctx.sw:
+        ctx.sw.set_notify(lambda msg: asyncio.run_coroutine_threadsafe(
+            ctx.rc._event(msg), loop))
+        ctx.sw.start(loop)
+    # 종료 신호 대기
+    stop_event = asyncio.Event()
+    try:
+        await stop_event.wait()
+    except asyncio.CancelledError:
+        pass
+
+
 def main():
     ctx = AppContext()
     atexit.register(ctx.cleanup)
@@ -173,8 +198,8 @@ def main():
     kill_competing_instances()
     write_pid()
 
-    if not config.DISCORD_TOKEN:
-        logger.error("DISCORD_TOKEN not set in .env")
+    if not config.RELAY_SERVER_URL and not config.DISCORD_TOKEN:
+        logger.error("DISCORD_TOKEN not set in .env (로컬 모드에서는 필수)")
         sys.exit(1)
 
     startup_check()
@@ -183,8 +208,14 @@ def main():
     ctx.gui = GUIManager()
     ctx.cm  = CookieManager()
     ctx.dm  = DownloadManager(ctx.cm)
+    ctx.sw  = StreamWatcher(ctx.dm, ctx.cm)
+    ctx.rc  = RelayClient(ctx.dm, ctx.cm, ctx.sw)
     ctx.gui.ctx = ctx
     ctx.gui.start_tray()
+
+    updater.check_update_async(
+        lambda info: ctx.gui.set_update_available(info) if info else None
+    )
 
     try:
         start_web(ctx)
@@ -219,7 +250,7 @@ def main():
 
     ctx.cm.on_status_change(_cm_status_changed)
 
-    bot = StreamSaverBot(ctx.dm, ctx.cm, gui=ctx.gui)
+    bot = StreamSaverBot(ctx.dm, ctx.cm, stream_watcher=ctx.sw, gui=ctx.gui)
     ctx.bot = bot
 
     has_cookies = (os.path.exists(config.COOKIE_FILE) and
@@ -243,7 +274,32 @@ def main():
     try:
         if IS_WINDOWS:
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        bot.run(config.DISCORD_TOKEN, log_handler=None)
+
+        if config.RELAY_SERVER_URL:
+            # 온라인 모드 — 릴레이 서버에 WebSocket 연결
+            ctx.gui.set_mode("relay")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            if config.RELAY_PAIR_CODE:
+                ctx.rc.set_pair_code(config.RELAY_PAIR_CODE)
+
+            def _rc_connected(guild_id):
+                logger.info("Relay connected: guild=%s", guild_id)
+                ctx.gui.notify("StreamSaver 연결됨", "릴레이 서버 연결 완료")
+                ctx.gui.set_bot_connected(True)
+
+            def _rc_disconnected():
+                ctx.gui.set_bot_connected(False)
+
+            ctx.rc.on_connect(_rc_connected)
+            ctx.rc.on_disconnect(_rc_disconnected)
+
+            loop.run_until_complete(_start_relay(ctx, loop))
+        else:
+            # 오프라인(로컬) 모드 — Discord 봇 직접 실행
+            ctx.gui.set_mode("local")
+            bot.run(config.DISCORD_TOKEN, log_handler=None)
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt")
     except discord.PrivilegedIntentsRequired:

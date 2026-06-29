@@ -45,18 +45,16 @@ class StreamSaverCog(commands.Cog):
     async def on_ready(self):
         logger.info("Bot logged in as %s", self.bot.user)
         self._channel = self.bot.get_channel(config.DISCORD_CHANNEL_ID)
-        if self._channel and not self._ready:
-            await self._channel.send("✅ StreamSaver 온라인")
-            self._ready = True
-        if self.bot.gui:
-            self.bot.gui.set_bot_connected(True)
-            self.bot.gui.notify("StreamSaver 온라인", f"{self.bot.user} 연결됨")
-        # 슬래시 커맨드 즉시 반영 (guild sync)
+        self._ready = True
         if self._channel:
+            await self._channel.send("✅ StreamSaver 온라인")
             guild = self._channel.guild
             self.bot.tree.copy_global_to(guild=guild)
             await self.bot.tree.sync(guild=guild)
             logger.info("Slash commands synced to guild %s", guild.id)
+        if self.bot.gui:
+            self.bot.gui.set_bot_connected(True)
+            self.bot.gui.notify("StreamSaver 온라인", f"{self.bot.user} 연결됨")
 
     @commands.Cog.listener()
     async def on_disconnect(self):
@@ -136,7 +134,7 @@ class StreamSaverCog(commands.Cog):
     # ── 유틸 ──────────────────────────────────────────────────────────────────
 
     async def _wrong_channel(self, interaction: discord.Interaction) -> bool:
-        if interaction.channel_id != config.DISCORD_CHANNEL_ID:
+        if config.DISCORD_CHANNEL_ID and interaction.channel_id != config.DISCORD_CHANNEL_ID:
             await interaction.response.send_message(
                 "❌ 지정 채널에서만 사용 가능합니다.", ephemeral=True)
             return True
@@ -149,6 +147,8 @@ class StreamSaverCog(commands.Cog):
     async def cmd_dl(self, interaction: discord.Interaction, url: str):
         if await self._wrong_channel(interaction):
             return
+        if not self._channel:
+            self._channel = interaction.channel
         task = self.dl.enqueue(url, interaction.user.name)
         await interaction.response.send_message(f"✅ #{task.id} 대기열 추가됨")
 
@@ -331,13 +331,103 @@ class StreamSaverCog(commands.Cog):
             ephemeral=True)
 
 
+class UnarchivedCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.sw  = bot.sw
+        self._channel = None
+        self._rl = _RateLimiter(min_gap=0.8)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        self._channel = self.bot.get_channel(config.DISCORD_CHANNEL_ID)
+        if self.sw and self._channel:
+            loop = self.bot.loop
+
+            def _notify(msg):
+                asyncio.run_coroutine_threadsafe(
+                    self._rl.send(self._channel, msg), loop)
+
+            self.sw.set_notify(_notify)
+            self.sw.start(loop)
+            logger.info("StreamWatcher started via on_ready")
+
+    unarchived = app_commands.Group(
+        name="unarchived", description="게릴라 라이브 자동 감지 관리")
+
+    @unarchived.command(name="add", description="감시할 채널 등록")
+    @app_commands.describe(
+        url="YouTube 채널 URL (@handle 또는 /channel/ID)",
+        name="표시 이름 (기본: URL 마지막 세그먼트)",
+        filter="제목 키워드 필터 (기본: unarchived / 빈 문자열=모든 라이브)")
+    async def _add(self, interaction: discord.Interaction,
+                   url: str, name: str = "", filter: str = "unarchived"):
+        if not self.sw:
+            await interaction.response.send_message("❌ Watcher 비활성화 상태", ephemeral=True)
+            return
+        display = self.sw.add(url, name, filter)
+        filt_txt = f'`{filter}`' if filter else '`전체 라이브`'
+        await interaction.response.send_message(
+            f"✅ **{display}** 등록 완료\n"
+            f"필터: {filt_txt} | 폴링: {config.WATCH_POLL_INTERVAL // 60}분 간격")
+
+    @unarchived.command(name="remove", description="채널 감시 해제")
+    @app_commands.describe(name="해제할 채널 이름")
+    async def _remove(self, interaction: discord.Interaction, name: str):
+        if not self.sw:
+            await interaction.response.send_message("❌ Watcher 비활성화 상태", ephemeral=True)
+            return
+        if self.sw.remove(name):
+            await interaction.response.send_message(f"🗑️ **{name}** 감시 해제됨")
+        else:
+            await interaction.response.send_message(
+                f"❌ `{name}` 을 찾을 수 없습니다. `/unarchived list` 로 목록 확인")
+
+    @_remove.autocomplete("name")
+    async def _remove_ac(self, interaction: discord.Interaction,
+                         current: str) -> list[app_commands.Choice[str]]:
+        if not self.sw:
+            return []
+        return [
+            app_commands.Choice(name=info["name"], value=info["name"])
+            for _, info in self.sw.list_channels()
+            if current.lower() in info["name"].lower()
+        ][:25]
+
+    @unarchived.command(name="list", description="감시 중인 채널 목록")
+    async def _list(self, interaction: discord.Interaction):
+        if not self.sw:
+            await interaction.response.send_message("❌ Watcher 비활성화 상태", ephemeral=True)
+            return
+        channels = self.sw.list_channels()
+        if not channels:
+            await interaction.response.send_message("📭 등록된 채널 없음")
+            return
+        lines = [f"**Unarchived 자동 감지 목록** (폴링: {config.WATCH_POLL_INTERVAL // 60}분)"]
+        for url, info in channels:
+            filt = f"`{info['title_filter']}`" if info["title_filter"] else "`전체 라이브`"
+            lines.append(f"• **{info['name']}** — 필터: {filt}\n  {url}")
+        await interaction.response.send_message("\n".join(lines))
+
+    @unarchived.command(name="check", description="모든 채널 즉시 점검")
+    async def _check(self, interaction: discord.Interaction):
+        if not self.sw:
+            await interaction.response.send_message("❌ Watcher 비활성화 상태", ephemeral=True)
+            return
+        await interaction.response.defer(thinking=True)
+        result = await self.sw.check_now()
+        await interaction.followup.send(f"🔍 {result}")
+
+
 class StreamSaverBot(commands.Bot):
-    def __init__(self, downloader, cookie_manager, gui=None):
+    def __init__(self, downloader, cookie_manager, stream_watcher=None, gui=None):
         intents = discord.Intents.default()
         super().__init__(command_prefix=(), intents=intents)
         self.dl  = downloader
         self.cm  = cookie_manager
+        self.sw  = stream_watcher
         self.gui = gui
 
     async def setup_hook(self):
         await self.add_cog(StreamSaverCog(self))
+        await self.add_cog(UnarchivedCog(self))
