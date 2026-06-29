@@ -58,8 +58,19 @@ begin
   SaveStringToFile(EnvPath, 'RELAY_PAIR_CODE=' + #13#10, True);
 end;
 
+procedure KillRunningInstance;
+var
+  ResultCode: Integer;
+begin
+  Exec('taskkill.exe', '/f /im {#MyAppExeName}', '', SW_HIDE,
+       ewWaitUntilTerminated, ResultCode);
+  Sleep(1500);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  if CurStep = ssInstall then
+    KillRunningInstance;
   if CurStep = ssPostInstall then
     CreateEnvFile;
 end;
