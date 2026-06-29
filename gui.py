@@ -247,7 +247,7 @@ class GUIManager:
     # ── 메뉴 ─────────────────────────────────────────────────────────────────
 
     def _watcher_items(self):
-        """📡 Unarchived 자동 감지 서브메뉴 — 등록 채널 목록"""
+        """📡 Unarchived 서브메뉴"""
         import pystray
         sw = self.ctx.sw if self.ctx else None
         if sw is None:
@@ -257,73 +257,84 @@ class GUIManager:
         if not channels:
             yield pystray.MenuItem("등록된 채널 없음", None, enabled=False)
         else:
-            yield pystray.MenuItem(
-                f"감시 중  {len(channels)}채널", None, enabled=False)
+            yield pystray.MenuItem(f"감시 중  {len(channels)}채널", None, enabled=False)
             for _url, info in channels:
                 from stream_watcher import StreamWatcher
                 filt  = info["title_filter"] or "전체"
                 label = StreamWatcher.display_name(info)
-                yield pystray.MenuItem(
-                    f"  • {label}  [{filt}]", None, enabled=False)
+                yield pystray.MenuItem(f"  • {label}  [{filt}]", None, enabled=False)
         interval_min = config.WATCH_POLL_INTERVAL // 60
-        yield pystray.MenuItem(
-            f"⏱ {interval_min}분 간격 폴링", None, enabled=False)
+        yield pystray.MenuItem(f"⏱ {interval_min}분 간격 폴링", None, enabled=False)
 
-    def _detail_items(self):
-        """📋 상세정보 서브메뉴 — 업타임·디스크·통계"""
+    def _settings_items(self):
+        """⚙️ 설정 서브메뉴"""
         import pystray
-
-        # 업타임
+        yield pystray.MenuItem(
+            "🚀 시작 시 자동 실행",
+            lambda icon, item: _autostart_set(not _autostart_is_enabled()),
+            checked=lambda item: _autostart_is_enabled(),
+        )
+        yield pystray.Menu.SEPARATOR
+        # 상세 정보
         elapsed = int(time.time() - self._start_time)
         h, rem  = divmod(elapsed, 3600)
         m       = rem // 60
         uptime  = f"{h}시간 {m}분" if h else f"{m}분"
         yield pystray.MenuItem(f"⏱ 가동 {uptime}", None, enabled=False)
-
-        # 디스크 여유 공간
         try:
-            dl_dir = config.DOWNLOAD_DIR
-            target = dl_dir if os.path.exists(dl_dir) else (os.path.splitdrive(dl_dir)[0] + "\\")
+            dl_dir  = config.DOWNLOAD_DIR
+            target  = dl_dir if os.path.exists(dl_dir) else (os.path.splitdrive(dl_dir)[0] + "\\")
             free_gb = shutil.disk_usage(target).free / 1024 ** 3
             disk_txt = f"💾 디스크 {free_gb:.1f} GB 남음"
         except Exception:
             disk_txt = "💾 디스크 확인 불가"
         yield pystray.MenuItem(disk_txt, None, enabled=False)
-
-        # 세션 통계
         yield pystray.MenuItem(
-            f"📊 완료 {self._completed} · 실패 {self._failed}",
-            None, enabled=False)
+            f"📊 완료 {self._completed} · 실패 {self._failed}", None, enabled=False)
+        cm = self.ctx.cm if self.ctx else None
+        if cm:
+            ck   = "쿠키 ✅" if cm.cookie_valid else "쿠키 ❌"
+            edge = "Edge 🟢" if (cm.cdp_port and cm._is_running()) else "Edge 🔴"
+            yield pystray.MenuItem(f"{ck}  {edge}", None, enabled=False)
 
     def _menu_items(self):
         """pystray가 메뉴 표시 시점에 호출 — 매번 최신 상태 반영"""
         import pystray
 
-        # ① 모드 상태 표시
+        # ① 상태
+        rc = self.ctx.rc if self.ctx else None
         if self._mode == "relay":
-            rc = self.ctx.rc if self.ctx else None
             if rc and rc.connected:
                 mode_txt = "🌐 온라인 모드  —  연결됨"
             else:
                 mode_txt = "🔄 온라인 모드  —  접속 시도 중..."
         else:
-            mode_txt = "💻 로컬 봇 모드" + ("  —  연결됨" if self._bot_connected else "  —  미연결")
+            mode_txt = "💻 로컬 모드" + ("  —  연결됨" if self._bot_connected else "  —  미연결")
         yield pystray.MenuItem(mode_txt, None, enabled=False)
-        if self._mode == "relay":
-            rc = self.ctx.rc if self.ctx else None
-            if not (rc and rc.connected):
-                yield pystray.MenuItem("🔗 서버 연결", self._connect_server)
+        if self._mode == "relay" and not (rc and rc.connected):
+            invite_url = getattr(config, "BOT_INVITE_URL", "")
+            if invite_url:
+                yield pystray.MenuItem(
+                    "🤖 1단계: Discord 봇 서버 초대",
+                    lambda icon, item: self._open_url(invite_url),
+                )
+            yield pystray.MenuItem("🔗 2단계: 서버 연결", self._connect_server)
         yield pystray.Menu.SEPARATOR
 
-        # ② 대시보드 (더블클릭 기본 액션)
+        # ② 주요 액션
         yield pystray.MenuItem(
-            "🌐 대시보드 열기",
+            "📊 대시보드 열기",
             lambda icon, item: webbrowser.open(f"http://localhost:{config.WEB_PORT}"),
             default=True,
         )
+        yield pystray.MenuItem(
+            "📂 다운로드 폴더",
+            lambda icon, item: subprocess.Popen(
+                ["explorer", config.DOWNLOAD_DIR], creationflags=_NW),
+        )
         yield pystray.Menu.SEPARATOR
 
-        # ② 다운로드 현황 (동적)
+        # ③ 다운로드 현황
         dm = self.ctx.dm if self.ctx else None
         if dm:
             s      = dm.status()
@@ -342,7 +353,7 @@ class GUIManager:
         else:
             yield pystray.MenuItem("⏳ 초기화 중...", None, enabled=False)
 
-        # ③ 경고·오류
+        # ④ 경고·오류
         with self._lock:
             alerts = list(self._errors.values()) + list(self._warnings.values())
         if alerts:
@@ -350,29 +361,19 @@ class GUIManager:
             for a in alerts[:3]:
                 yield pystray.MenuItem(f"⚠ {a}", None, enabled=False)
 
-        # ④ 컨트롤
+        # ⑤ 서브메뉴
         yield pystray.Menu.SEPARATOR
-        yield pystray.MenuItem(
-            "📂 다운로드 폴더",
-            lambda icon, item: subprocess.Popen(
-                ["explorer", config.DOWNLOAD_DIR], creationflags=_NW),
-        )
-        yield pystray.MenuItem("📋 상세정보", pystray.Menu(self._detail_items))
-        yield pystray.MenuItem(
-            "📡 Unarchived 자동 감지", pystray.Menu(self._watcher_items))
+        yield pystray.MenuItem("📡 Unarchived", pystray.Menu(self._watcher_items))
+        yield pystray.MenuItem("⚙️ 설정", pystray.Menu(self._settings_items))
         yield pystray.Menu.SEPARATOR
-        yield pystray.MenuItem("🔄 봇 재시작", self._on_restart)
-        yield pystray.MenuItem(
-            "🚀 시작 시 자동 실행",
-            lambda icon, item: _autostart_set(not _autostart_is_enabled()),
-            checked=lambda item: _autostart_is_enabled(),
-        )
-        yield pystray.Menu.SEPARATOR
+
+        # ⑥ 하단
+        yield pystray.MenuItem("🔄 재시작", self._on_restart)
         if self._update_info:
             v   = self._update_info["version"]
             url = self._update_info["url"]
             yield pystray.MenuItem(
-                f"⬆️ v{v} 업데이트 다운로드",
+                f"⬆️ v{v} 업데이트",
                 lambda icon, item: self._open_url(url),
             )
         yield pystray.MenuItem(

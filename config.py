@@ -93,5 +93,11 @@ except ImportError:
 
 NODE_JS = shutil.which('node') or ''
 
-APP_VERSION = "1.0.0"
-GITHUB_REPO = "11qaws/StreamSaver"
+APP_VERSION    = "1.0.0"
+GITHUB_REPO    = "11qaws/StreamSaver"
+BOT_INVITE_URL = (
+    "https://discord.com/oauth2/authorize"
+    "?client_id=1520388249040978100"
+    "&permissions=84992"
+    "&scope=bot+applications.commands"
+)
