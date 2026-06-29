@@ -295,6 +295,7 @@ def main():
 
             ctx.rc.on_connect(_rc_connected)
             ctx.rc.on_disconnect(_rc_disconnected)
+            ctx.rc.on_watcher_change(ctx.gui._refresh)
 
             loop.run_until_complete(_start_relay(ctx, loop))
         else:

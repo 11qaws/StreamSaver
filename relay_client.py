@@ -30,8 +30,9 @@ class RelayClient:
         self._connected  = False
         self._task       = None
         self._loop       = None
-        self._on_connect_cb  = None
-        self._on_disconnect_cb = None
+        self._on_connect_cb      = None
+        self._on_disconnect_cb   = None
+        self._on_watcher_change_cb = None
 
         # 다운로드 이벤트 → relay로 전달
         self.dl.on_event(self._on_dl_event)
@@ -48,6 +49,9 @@ class RelayClient:
 
     def on_disconnect(self, cb):
         self._on_disconnect_cb = cb
+
+    def on_watcher_change(self, cb):
+        self._on_watcher_change_cb = cb
 
     @property
     def connected(self) -> bool:
@@ -224,13 +228,18 @@ class RelayClient:
             from stream_watcher import StreamWatcher
             label = self.sw.add(args["url"], args.get("name", ""), args.get("filter", "unarchived"))
             filt  = args.get("filter", "unarchived") or "전체 라이브"
+            if self._on_watcher_change_cb:
+                self._on_watcher_change_cb()
             return f"✅ **{label}** 등록 완료 (필터: `{filt}`)"
 
         elif cmd == "unarchived_remove":
             if not self.sw:
                 return "❌ Watcher 비활성화"
             name = args.get("name", "")
-            return f"🗑️ **{name}** 해제됨" if self.sw.remove(name) else f"❌ `{name}` 찾을 수 없음"
+            result = self.sw.remove(name)
+            if result and self._on_watcher_change_cb:
+                self._on_watcher_change_cb()
+            return f"🗑️ **{name}** 해제됨" if result else f"❌ `{name}` 찾을 수 없음"
 
         elif cmd == "unarchived_list":
             if not self.sw:
