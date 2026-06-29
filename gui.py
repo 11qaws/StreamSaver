@@ -311,7 +311,7 @@ class GUIManager:
         yield pystray.MenuItem(mode_txt, None, enabled=False)
         if self._mode == "relay":
             rc = self.ctx.rc if self.ctx else None
-            if not (rc and rc.connected) and (not rc or rc.needs_pair_code):
+            if not (rc and rc.connected):
                 yield pystray.MenuItem("🔗 서버 연결", self._connect_server)
         yield pystray.Menu.SEPARATOR
 
@@ -369,10 +369,11 @@ class GUIManager:
         )
         yield pystray.Menu.SEPARATOR
         if self._update_info:
-            v = self._update_info["version"]
+            v   = self._update_info["version"]
+            url = self._update_info["url"]
             yield pystray.MenuItem(
                 f"⬆️ v{v} 업데이트 다운로드",
-                lambda icon, item, u=self._update_info["url"]: self._open_url(u),
+                lambda icon, item: self._open_url(url),
             )
         yield pystray.MenuItem(
             f"ℹ️ StreamSaver v{config.APP_VERSION}", None, enabled=False)
