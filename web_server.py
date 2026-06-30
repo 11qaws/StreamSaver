@@ -65,6 +65,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json({"version": config.APP_VERSION, "repo": config.GITHUB_REPO})
             elif path == "/api/settings":
                 self._settings()
+            elif path == "/api/export":
+                self._export(qs)
             else:
                 self.send_error(404)
         except Exception as e:
@@ -180,6 +182,41 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "disk_total_gb":       disk_total_gb,
             "repo":                config.GITHUB_REPO,
         })
+
+    def _export(self, qs):
+        history = _load_history()
+        fmt = (qs.get("format") or ["json"])[0].lower()
+        if fmt == "csv":
+            import io
+            buf = io.StringIO()
+            cols = ["title", "channel", "id", "upload_date", "duration", "file_size", "is_membership"]
+            buf.write(",".join(cols) + "\r\n")
+            for e in history:
+                row = [
+                    '"' + str(e.get("title", "")).replace('"', '""') + '"',
+                    '"' + str(e.get("channel", "")).replace('"', '""') + '"',
+                    str(e.get("id", "")),
+                    str(e.get("upload_date", "")),
+                    str(e.get("duration", "")),
+                    str(e.get("file_size", "")),
+                    "1" if e.get("is_membership") else "0",
+                ]
+                buf.write(",".join(row) + "\r\n")
+            data = buf.getvalue().encode("utf-8-sig")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", "attachment; filename=streamsaver_history.csv")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(data)
+        else:
+            data = json.dumps(history, ensure_ascii=False, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Disposition", "attachment; filename=streamsaver_history.json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(data)
 
     def _download_add(self, data):
         dm = _dm

@@ -432,6 +432,7 @@ header{
 .setting-path{font-family:monospace;font-size:0.875rem;font-weight:400}
 .setting-bar-wrap{height:4px;background:var(--border);border-radius:4px;margin-top:8px;overflow:hidden}
 .setting-bar{height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
+.setting-export-btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 
 /* ── 채널 필터 칩 ── */
 .channel-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
@@ -1103,6 +1104,11 @@ function loadSettings(){
         +'<div class="setting-bar-wrap"><div class="setting-bar" style="width:'+diskPct+'%"></div></div></div>'
       +'<div class="setting-card wide"><div class="setting-label">다운로드 폴더</div><div class="setting-value setting-path">'+d.download_dir+'</div></div>'
       +'<div class="setting-card wide"><div class="setting-label">GitHub 저장소</div><div class="setting-value"><a href="https://github.com/'+d.repo+'" target="_blank">'+d.repo+'</a></div></div>'
+      +'<div class="setting-card wide"><div class="setting-label">기록 내보내기</div>'
+        +'<div class="setting-export-btns">'
+        +'<a class="modal-btn secondary" href="/api/export?format=json" download>⬇ JSON</a>'
+        +'<a class="modal-btn secondary" href="/api/export?format=csv" download>⬇ CSV</a>'
+        +'</div></div>'
       +'</div>';
   }).catch(function(){ el.innerHTML='<p style="color:var(--text3);padding:16px">설정을 불러오지 못했습니다.</p>'; });
 }
