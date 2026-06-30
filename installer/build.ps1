@@ -16,11 +16,6 @@ $ISCC   = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 $DIST   = "$ROOT\dist\StreamSaver"
 $OUTDIR = "$PSScriptRoot\Output"
 
-# Locate gh CLI
-$_ghCmd = Get-Command gh -ErrorAction SilentlyContinue
-$GH = if ($_ghCmd) { $_ghCmd.Source } else { "C:\Program Files\GitHub CLI\gh.exe" }
-if ($Release -and -not (Test-Path $GH)) { throw "gh CLI not found: $GH" }
-
 Write-Host "=== StreamSaver build ===" -ForegroundColor Cyan
 
 # -- 1. PyInstaller -----------------------------------------------------------
@@ -79,40 +74,29 @@ if ($Release) {
     $version = (Select-String -Path "$PSScriptRoot\setup.iss" -Pattern '#define MyAppVersion "(.+)"').Matches[0].Groups[1].Value
     $tag   = "v$version"
     $title = "StreamSaver $tag"
+    $notes = "## 변경사항`n`n### 트레이 기능 추가 (v1.0.13)`n- 다운로드 폴더 즉시 변경 (재시작 불필요, .env에 영구 저장)`n- 언아카이브 채널 관리 다이얼로그 (추가/삭제, 봇과 상태 동기화)`n`n### 내부 파일 경로 정리 (v1.0.14)`n- 앱 데이터 파일(archive.txt, cookie.txt, history.json, watch_channels.json, .relay_guild)을 ``%LOCALAPPDATA%\StreamSaver\data\`` 로 통합`n- crash.txt 를 ``logs\`` 로 이동`n- **업데이트 설치 시 기존 파일 자동 마이그레이션** - 재설정 불필요`n`n## 설치 방법`n1. 아래 ``StreamSaver_Setup_v$version.exe`` 다운로드`n2. 실행 중인 StreamSaver가 있으면 자동 종료 후 업데이트`n3. 설치 완료 후 자동 재시작"
 
-    # Write release notes as UTF-8 file to avoid PowerShell 5.1 CP949 default encoding
-    $noteLines = @(
-        "## Changes (v1.0.13 ~ v1.0.14)",
-        "",
-        "### Tray features (v1.0.13)",
-        "- Download folder change without restart (.env saved permanently)",
-        "- Unarchived channel management dialog (add/remove, synced with bot)",
-        "",
-        "### Internal file path reorganization (v1.0.14)",
-        "- App data files (archive.txt, cookie.txt, history.json, watch_channels.json, .relay_guild) moved to ``%LOCALAPPDATA%\StreamSaver\data\``",
-        "- crash.txt moved to ``logs\``",
-        "- **Automatic migration on update** - no manual reconfiguration needed",
-        "",
-        "## Install",
-        "1. Download ``StreamSaver_Setup_v$version.exe`` below",
-        "2. Run installer (will auto-close existing StreamSaver)",
-        "3. App restarts automatically after install"
-    )
-    $notes     = [string]::Join([char]10, $noteLines)
-    $notesFile = [System.IO.Path]::GetTempFileName()
-    [System.IO.File]::WriteAllText($notesFile, $notes, [System.Text.Encoding]::UTF8)
-
-    try {
-        $env:GH_TOKEN = $GhToken
-        & $GH release create $tag $OutFile.FullName `
-            --repo 11qaws/StreamSaver `
-            --title $title `
-            --notes-file $notesFile
-        if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
-        Write-Host "     -> Released: $tag" -ForegroundColor Green
-    } finally {
-        Remove-Item $notesFile -ErrorAction SilentlyContinue
+    $headers = @{
+        Authorization = "token $GhToken"
+        Accept        = "application/vnd.github+json"
     }
+    $body = @{ tag_name = $tag; name = $title; body = $notes } | ConvertTo-Json
+
+    # 1) 릴리즈 생성
+    $release = Invoke-RestMethod `
+        -Uri "https://api.github.com/repos/11qaws/StreamSaver/releases" `
+        -Method Post -Headers $headers `
+        -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
+        -ContentType "application/json; charset=utf-8"
+
+    # 2) 인스톨러 업로드
+    $uploadUrl = "https://uploads.github.com/repos/11qaws/StreamSaver/releases/$($release.id)/assets?name=$($OutFile.Name)"
+    $fileBytes  = [System.IO.File]::ReadAllBytes($OutFile.FullName)
+    Invoke-RestMethod `
+        -Uri $uploadUrl -Method Post -Headers $headers `
+        -Body $fileBytes -ContentType "application/octet-stream" | Out-Null
+
+    Write-Host "     -> Released: $($release.html_url)" -ForegroundColor Green
 }
 
 # -- 6. Relay server deploy (optional) ----------------------------------------
