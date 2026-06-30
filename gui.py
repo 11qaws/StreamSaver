@@ -677,7 +677,8 @@ class GUIManager:
                 w.bind("<Enter>", lambda e: _btn_hover(con_f, con_l, PRIMARY, P_HOV, True))
                 w.bind("<Leave>", lambda e: _btn_hover(con_f, con_l, PRIMARY, P_HOV, False))
 
-            root.mainloop()
+            root.wait_window(dlg)
+            root.destroy()
 
             code = (result["code"] or "").strip().upper()
             if not code:
@@ -740,6 +741,12 @@ class GUIManager:
 
     def _manage_unarchived(self, icon=None, item=None):
         def _dialog():
+            try:
+                _dialog_body()
+            except Exception as e:
+                logger.error("_manage_unarchived dialog error: %s", e, exc_info=True)
+
+        def _dialog_body():
             import tkinter as tk
             from tkinter import messagebox
             from stream_watcher import StreamWatcher as SW
@@ -965,7 +972,8 @@ class GUIManager:
                 w.bind("<Enter>",   lambda e: _btn_hover(close_f, close_l, SEC, S_HOV, True))
                 w.bind("<Leave>",   lambda e: _btn_hover(close_f, close_l, SEC, S_HOV, False))
 
-            root.mainloop()
+            root.wait_window(dlg)
+            root.destroy()
 
         threading.Thread(target=_dialog, daemon=True).start()
 
