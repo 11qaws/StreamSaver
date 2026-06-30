@@ -91,6 +91,10 @@ header{
   display:flex;align-items:center;gap:18px;flex-wrap:wrap
 }
 .status-item{display:flex;align-items:center;gap:5px;color:var(--text3)}
+.disk-bar-wrap{width:80px;height:3px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.disk-bar-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .5s,background .5s}
+.disk-bar-fill.warn{background:#f59e0b}
+.disk-bar-fill.danger{background:#ef4444}
 .status-item .label{color:var(--text4)}
 .status-item .val{font-weight:500;color:var(--text2)}
 .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
@@ -567,9 +571,12 @@ header{
       <span class="val" id="val-cookie">확인 중</span>
     </div>
     <div class="status-divider"></div>
-    <div class="status-item">
-      <span class="label">디스크</span>
-      <span class="val" id="val-disk">-</span>
+    <div class="status-item" style="flex-direction:column;align-items:flex-start;gap:2px">
+      <div style="display:flex;align-items:center;gap:5px">
+        <span class="label">디스크</span>
+        <span class="val" id="val-disk">-</span>
+      </div>
+      <div class="disk-bar-wrap"><div class="disk-bar-fill" id="disk-bar-fill"></div></div>
     </div>
     <div class="status-divider"></div>
     <div class="status-item">
@@ -847,6 +854,14 @@ function updateStatusBar(st){
   setDot('dot-cookie', st.cookie_valid?'green':(st.cookie_file?'red':'gray'));
   setText('val-cookie', st.cookie_valid?'유효':(st.cookie_file?'만료됨':'없음'));
   setText('val-disk', st.disk_free_gb!==undefined ? st.disk_free_gb+' GB 여유' : '-');
+  if(st.disk_total_gb>0){
+    var usedPct=Math.round((1-st.disk_free_gb/st.disk_total_gb)*100);
+    var bar=document.getElementById('disk-bar-fill');
+    if(bar){
+      bar.style.width=usedPct+'%';
+      bar.className='disk-bar-fill'+(usedPct>=90?' danger':usedPct>=75?' warn':'');
+    }
+  }
   var actCount = st.active ? st.active.length : 0;
   setDot('dot-active', actCount>0?'blue':'gray');
   setText('val-active', actCount+'개');
@@ -1373,6 +1388,9 @@ dlUrlInput.addEventListener('paste', function(e){
 });
 // 키보드 단축키: D키로 URL 입력란 포커스 (모달 닫혀있을 때)
 document.addEventListener('keydown',function(e){
+  if(e.key==='t'&&!e.ctrlKey&&!e.metaKey&&!currentModal&&activeEl!=='INPUT'&&activeEl!=='TEXTAREA'){
+    themeBtn.click();
+  }
   if(e.key==='d'&&!e.ctrlKey&&!e.metaKey&&!currentModal&&document.activeElement.tagName!=='INPUT'){
     e.preventDefault();
     dlUrlInput.focus();
