@@ -14,6 +14,9 @@ import config
 logger = logging.getLogger("StreamSaver.Downloader")
 _NW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)  # CMD 창 숨김
 
+_STALL_LIVE   = 300   # 라이브: 5분 출력 없으면 자동 취소
+_STALL_NORMAL = 900   # 일반: 15분 출력 없으면 자동 취소
+
 
 class TaskStatus(Enum):
     QUEUED = "queued"
@@ -241,10 +244,32 @@ class DownloadManager:
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, creationflags=_NW)
 
-        last_notify = time.time()
-        captured_file = None   # yt-dlp stdout에서 파싱한 실제 출력 파일
+        last_notify    = time.time()
+        captured_file  = None   # yt-dlp stdout에서 파싱한 실제 출력 파일
+        last_line      = [time.time()]   # watchdog 공유 — mutable container
+        stall_limit    = _STALL_LIVE if task.state == "live" else _STALL_NORMAL
+
+        def _watchdog():
+            while task.process.poll() is None and not task.cancelled:
+                time.sleep(30)
+                if task.process.poll() is not None or task.cancelled:
+                    break
+                stall = time.time() - last_line[0]
+                if stall > stall_limit:
+                    logger.warning("Task #%d stalled %.0fs — terminating", task.id, stall)
+                    task.process.terminate()
+                    task.error = (f"{'라이브' if task.state == 'live' else '다운로드'} "
+                                  f"응답 없음 {int(stall // 60)}분 초과")
+                    self._emit("warning", task,
+                               message=(f"⏱️ #{task.id} 오랫동안 응답이 없어 자동 취소됐습니다. "
+                                        f"`/dl`로 재시도하세요."))
+                    break
+
+        threading.Thread(target=_watchdog, daemon=True,
+                         name=f"watchdog-{task.id}").start()
 
         for line in iter(task.process.stdout.readline, ""):
+            last_line[0] = time.time()
             if task.cancelled:
                 task.process.terminate()
                 return -1, None

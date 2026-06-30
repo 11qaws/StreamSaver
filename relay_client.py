@@ -44,9 +44,10 @@ class RelayClient:
         self._connected  = False
         self._task       = None
         self._loop       = None
-        self._on_connect_cb      = None
-        self._on_disconnect_cb   = None
+        self._on_connect_cb        = None
+        self._on_disconnect_cb     = None
         self._on_watcher_change_cb = None
+        self._on_error_cb          = None
 
         # 다운로드 이벤트 → relay로 전달
         self.dl.on_event(self._on_dl_event)
@@ -66,6 +67,9 @@ class RelayClient:
 
     def on_watcher_change(self, cb):
         self._on_watcher_change_cb = cb
+
+    def on_error(self, cb):
+        self._on_error_cb = cb
 
     @property
     def connected(self) -> bool:
@@ -175,7 +179,17 @@ class RelayClient:
             await self._push_state()
 
         elif mtype == "error":
-            logger.error("Relay error: %s", msg.get("message"))
+            raw = msg.get("message", "알 수 없는 오류")
+            logger.error("Relay error: %s", raw)
+            if "만료" in raw or "유효하지" in raw:
+                user_msg = (f"⚠️ 코드가 만료됐거나 올바르지 않습니다.\n"
+                            f"Discord에서 /setup을 다시 실행해 새 코드를 받으세요.")
+            elif "인증" in raw:
+                user_msg = "❌ 서버 인증 실패 — 설정을 확인하세요."
+            else:
+                user_msg = f"❌ 릴레이 오류: {raw}"
+            if self._on_error_cb:
+                self._on_error_cb(user_msg)
 
         elif mtype == "command":
             asyncio.create_task(self._exec_command(msg))
@@ -227,7 +241,13 @@ class RelayClient:
             done = threading.Event()
 
             def on_done(ok):
-                result_holder["msg"] = "✅ 로그인 성공! 쿠키가 저장되었습니다." if ok else "❌ 로그인 실패."
+                if ok:
+                    result_holder["msg"] = "✅ 로그인 성공! 쿠키가 저장되었습니다."
+                else:
+                    result_holder["msg"] = (
+                        "❌ 로그인이 취소됐거나 실패했습니다.\n"
+                        "Edge 창을 X로 닫은 경우 `/login`을 다시 입력하세요."
+                    )
                 done.set()
 
             def on_progress(msg):

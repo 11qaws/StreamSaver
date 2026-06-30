@@ -342,11 +342,15 @@ class GUIManager:
             active = s.get("active", [])
             if active:
                 for t in active[:5]:
+                    tid = t["id"]
                     if t.get("state") == "live":
-                        txt = f"📡 #{t['id']}  {t.get('downloaded') or '?'} · {t.get('speed') or '?'}"
+                        txt = f"📡 #{tid}  {t.get('downloaded') or '?'} · {t.get('speed') or '?'}  ✕"
                     else:
-                        txt = f"⬇ #{t['id']}  {t.get('progress', 0):.0f}% · {t.get('speed') or '?'}"
-                    yield pystray.MenuItem(txt, None, enabled=False)
+                        txt = f"⬇ #{tid}  {t.get('progress', 0):.0f}% · {t.get('speed') or '?'}  ✕"
+                    yield pystray.MenuItem(
+                        txt,
+                        lambda icon, item, _id=tid: self._cancel_task(_id),
+                    )
                 if s.get("queued", 0):
                     yield pystray.MenuItem(f"🕐 대기 {s['queued']}개", None, enabled=False)
             else:
@@ -430,19 +434,53 @@ class GUIManager:
     def _connect_server(self, icon, item=None):
         def _dialog():
             import tkinter as tk
-            from tkinter import simpledialog
             root = tk.Tk()
             root.withdraw()
-            root.attributes('-topmost', True)
-            code = simpledialog.askstring(
-                "서버 연결",
-                "Discord에서 /setup 명령어로 받은\n페어링 코드를 입력하세요:\n\n예: ABC-123",
-                parent=root
-            )
-            root.destroy()
-            if not code:
-                return
-            code = code.strip().upper()
+
+            dlg = tk.Toplevel(root)
+            dlg.title("서버 연결")
+            dlg.resizable(False, False)
+            dlg.attributes("-topmost", True)
+            dlg.grab_set()
+
+            pad = {"padx": 18, "pady": 6}
+
+            tk.Label(dlg, text="Discord에서 /setup 입력 후 받은 코드를 입력하세요.",
+                     justify="center", **pad).pack()
+            tk.Label(dlg, text="아직 /setup을 실행하지 않았다면 먼저 Discord를 여세요.",
+                     foreground="#666", font=("", 9), **pad).pack()
+
+            tk.Button(
+                dlg, text="🔗 Discord 열기",
+                command=lambda: webbrowser.open("https://discord.com/app"),
+                relief="groove",
+            ).pack(pady=(4, 10))
+
+            tk.Label(dlg, text="코드 (예: ABC-123)", **pad).pack()
+            entry = tk.Entry(dlg, width=16, font=("Consolas", 15), justify="center")
+            entry.pack(padx=18, pady=4)
+            entry.focus_set()
+
+            result = {"code": None}
+
+            def _submit(e=None):
+                result["code"] = entry.get()
+                dlg.destroy()
+
+            def _cancel(e=None):
+                dlg.destroy()
+
+            entry.bind("<Return>", _submit)
+            dlg.protocol("WM_DELETE_WINDOW", _cancel)
+
+            btn_frame = tk.Frame(dlg)
+            btn_frame.pack(pady=10)
+            tk.Button(btn_frame, text="연결", width=8, command=_submit).pack(side="left", padx=4)
+            tk.Button(btn_frame, text="취소", width=8, command=_cancel).pack(side="left", padx=4)
+
+            root.mainloop()
+
+            code = (result["code"] or "").strip().upper()
             if not code:
                 return
             rc = self.ctx.rc if self.ctx else None
@@ -450,6 +488,7 @@ class GUIManager:
                 rc.set_pair_code(code)
             self._update_env_key("RELAY_PAIR_CODE", code)
             self.notify("StreamSaver", f"연결 시도 중... ({code})")
+
         threading.Thread(target=_dialog, daemon=True).start()
 
     def _update_env_key(self, key: str, value: str):
@@ -494,6 +533,13 @@ class GUIManager:
     def _open_url(self, url: str):
         import webbrowser
         webbrowser.open(url)
+
+    def _cancel_task(self, task_id: int):
+        dm = self.ctx.dm if self.ctx else None
+        if dm and dm.cancel(task_id):
+            self.notify("StreamSaver", f"#{task_id} 취소 중...")
+        else:
+            self.notify("StreamSaver", f"#{task_id} 취소 불가 — 이미 완료됐거나 없는 작업입니다.")
 
     def _start_auto_update(self, icon, item=None):
         if self._update_progress is not None:
