@@ -621,15 +621,16 @@ class DownloadManager:
             return {
                 "active": [
                     {
-                        "id":         t.id,
-                        "url":        t.url,
-                        "title":      t.info.get("title", "") if t.info else "",
-                        "progress":   t.progress,
-                        "speed":      t.speed,
-                        "eta":        t.eta,
-                        "downloaded": t.downloaded,
-                        "state":      t.state,
-                        "status":     t.status.value,
+                        "id":           t.id,
+                        "url":          t.url,
+                        "title":        t.info.get("title", "") if t.info else "",
+                        "requested_by": t.requested_by or "",
+                        "progress":     t.progress,
+                        "speed":        t.speed,
+                        "eta":          t.eta,
+                        "downloaded":   t.downloaded,
+                        "state":        t.state,
+                        "status":       t.status.value,
                     }
                     for t in self.active
                 ],
