@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import threading
 import time
 
@@ -17,6 +18,19 @@ import config
 logger = logging.getLogger("StreamSaver.RelayClient")
 
 RECONNECT_DELAY = 10   # 재연결 대기 초
+
+
+def _set_keepalive(ws):
+    """TCP keepalive 설정 — NAT 테이블 유지용."""
+    try:
+        sock = ws.transport.get_extra_info("socket")
+        if sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 30)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+    except Exception as e:
+        logger.debug("keepalive setup failed: %s", e)
 
 
 class RelayClient:
@@ -110,6 +124,7 @@ class RelayClient:
             ping_timeout=20,
         ) as ws:
             self._ws = ws
+            _set_keepalive(ws)
 
             await ws.send(json.dumps({
                 "type":   "pair",
@@ -131,6 +146,7 @@ class RelayClient:
             ping_timeout=20,
         ) as ws:
             self._ws = ws
+            _set_keepalive(ws)
 
             await ws.send(json.dumps({
                 "type":     "reconnect",

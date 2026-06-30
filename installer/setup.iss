@@ -1,5 +1,5 @@
 #define MyAppName "StreamSaver"
-#define MyAppVersion "1.0.6"
+#define MyAppVersion "1.0.7"
 #define MyAppPublisher "StreamSaver"
 #define MyAppExeName "StreamSaver.exe"
 #define RelayURL "ws://217.142.229.237:8765"
@@ -77,3 +77,4 @@ end;
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "StreamSaver 지금 실행하기"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: WizardSilent

@@ -110,6 +110,7 @@ class GUIManager:
         self._failed          = 0
         self._mode            = "relay" if config.RELAY_SERVER_URL else "local"
         self._update_info     = None   # {"version": ..., "url": ...} or None
+        self._update_progress = None   # None=대기, int=다운로드 진행률(0~100)
 
     # ── 상태 계산 ─────────────────────────────────────────────────────────────
 
@@ -370,12 +371,17 @@ class GUIManager:
         # ⑥ 하단
         yield pystray.MenuItem("🔄 재시작", self._on_restart)
         if self._update_info:
-            v   = self._update_info["version"]
-            url = self._update_info["url"]
-            yield pystray.MenuItem(
-                f"⬆️ v{v} 업데이트",
-                lambda icon, item: self._open_url(url),
-            )
+            v = self._update_info["version"]
+            if self._update_progress is not None:
+                pct = self._update_progress
+                label = (f"⏳ 설치 중..." if pct >= 100
+                         else f"⬇️ 업데이트 다운로드 중 ({pct}%)")
+                yield pystray.MenuItem(label, None, enabled=False)
+            else:
+                yield pystray.MenuItem(
+                    f"⬆️ v{v} 업데이트",
+                    self._start_auto_update,
+                )
         yield pystray.MenuItem(
             f"ℹ️ StreamSaver v{config.APP_VERSION}", None, enabled=False)
         yield pystray.MenuItem("⏹ 종료", self._on_quit)
@@ -488,6 +494,38 @@ class GUIManager:
     def _open_url(self, url: str):
         import webbrowser
         webbrowser.open(url)
+
+    def _start_auto_update(self, icon, item=None):
+        if self._update_progress is not None:
+            return  # 이미 진행 중
+        threading.Thread(target=self._run_auto_update, daemon=True,
+                         name="AutoUpdater").start()
+
+    def _run_auto_update(self):
+        import updater
+        info = self._update_info
+        if not info:
+            return
+        url = info["url"]
+
+        def on_progress(pct: int):
+            self._update_progress = pct
+            self._refresh()
+
+        try:
+            self._update_progress = 0
+            self._refresh()
+            installer_path = updater.download_update(url, on_progress)
+            self._update_progress = 100
+            self._refresh()
+            self.notify("StreamSaver", "업데이트를 설치합니다. 잠시 후 재시작됩니다.")
+            updater.install_update(installer_path)
+            # 인스톨러가 이 프로세스를 종료하고 새 버전을 실행함
+        except Exception as e:
+            logger.error("Auto-update failed: %s", e)
+            self._update_progress = None
+            self.notify("StreamSaver", f"업데이트 실패: {e}")
+            self._refresh()
 
     def _on_quit(self, icon, item=None):
         logger.info("Tray: quit")
