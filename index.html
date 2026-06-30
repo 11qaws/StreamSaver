@@ -130,8 +130,18 @@ header{
 }
 .task-status-badge.getting_info{background:#fef9c3;color:#854d0e}
 [data-theme="dark"] .task-status-badge.getting_info{background:#422006;color:#fcd34d}
+.task-status-badge.failed{background:#fee2e2;color:#991b1b}
+[data-theme="dark"] .task-status-badge.failed{background:#450a0a;color:#fca5a5}
+.task-status-badge.completed{background:#dcfce7;color:#166534}
+[data-theme="dark"] .task-status-badge.completed{background:#052e16;color:#86efac}
+.task-status-badge.cancelled{background:var(--bg3);color:var(--text4)}
+.task-row.state-failed{border-color:#fca5a5}
+[data-theme="dark"] .task-row.state-failed{border-color:#7f1d1d}
 .progress-wrap{position:relative;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
 .progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .5s ease}
+.progress-fill.state-failed{background:#ef4444}
+.progress-fill.state-completed{background:#22c55e}
+.progress-fill.state-getting_info{background:#f59e0b;animation:pulse-bar 1.2s ease-in-out infinite}
 .task-pct{font-size:0.75rem;color:var(--text3);text-align:right}
 .btn-cancel-task{
   padding:3px 10px;background:var(--bg);color:var(--text3);
@@ -282,6 +292,7 @@ header{
   margin:0 auto 12px
 }
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse-bar{0%,100%{opacity:1} 50%{opacity:.5}}
 .loading p{font-size:0.875rem;color:var(--text4)}
 
 /* ── 페이지네이션 ── */
@@ -851,7 +862,8 @@ function updateActivePanel(active, queueList){
     if(t.eta)   meta.push('남은 시간 '+t.eta);
     if(t.downloaded) meta.push(t.downloaded);
     var badge=t.status||'downloading';
-    html+='<div class="task-row">'
+    var rowClass='task-row'+(t.status==='failed'?' state-failed':'');
+    html+='<div class="'+rowClass+'">'
       +'<div class="task-top">'
       +'<div class="task-title" title="'+title.replace(/"/g,'&quot;')+'">'+title+'</div>'
       +'<div class="task-meta">'+meta.join(' &middot; ')
@@ -860,10 +872,8 @@ function updateActivePanel(active, queueList){
       +'<span class="task-status-badge '+badge+'">'+statusLabel(badge)+'</span>'
       +'<button class="btn-cancel-task" data-id="'+t.id+'">취소</button>'
       +'</div>'
-      +(t.status==='downloading'&&pct>0
-          ?'<div class="progress-wrap"><div class="progress-fill" style="width:'+pct+'%"></div></div>'
-           +'<div class="task-pct">'+pct+'%</div>'
-          :'')
+      +'<div class="progress-wrap"><div class="progress-fill state-'+(t.status||'downloading')+'" style="width:'+Math.max(pct,t.status==='getting_info'?15:t.status==='failed'||t.status==='cancelled'?100:pct)+'%"></div></div>'
+      +(pct>0?'<div class="task-pct">'+pct+'%</div>':'')
       +'</div>';
   });
   // 대기 중 목록 추가
