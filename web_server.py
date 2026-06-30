@@ -63,6 +63,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._channels_list()
             elif path == "/api/version":
                 self._json({"version": config.APP_VERSION, "repo": config.GITHUB_REPO})
+            elif path == "/api/settings":
+                self._settings()
             else:
                 self.send_error(404)
         except Exception as e:
@@ -156,8 +158,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "edge_running": cs.get("edge_running", False),
             "active": ds.get("active", []),
             "queued": ds.get("queued", 0),
+            "queue_list": ds.get("queue_list", []),
             "disk_free_gb": disk_free_gb,
             "disk_total_gb": disk_total_gb,
+        })
+
+    def _settings(self):
+        try:
+            du = shutil.disk_usage(config.DOWNLOAD_DIR)
+            disk_free_gb = round(du.free / (1024 ** 3), 1)
+            disk_total_gb = round(du.total / (1024 ** 3), 1)
+        except Exception:
+            disk_free_gb = 0
+            disk_total_gb = 0
+        self._json({
+            "version":             config.APP_VERSION,
+            "download_dir":        config.DOWNLOAD_DIR,
+            "max_parallel":        config.MAX_PARALLEL,
+            "watch_poll_interval": config.WATCH_POLL_INTERVAL,
+            "disk_free_gb":        disk_free_gb,
+            "disk_total_gb":       disk_total_gb,
+            "repo":                config.GITHUB_REPO,
         })
 
     def _download_add(self, data):

@@ -414,6 +414,34 @@ header{
 .modal-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .modal-btn.primary:hover{background:var(--accentH)}
 
+/* ── 설정 탭 ── */
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:16px}
+.setting-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px
+}
+.setting-card .s-title{font-size:0.75rem;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.setting-card .s-main{font-size:1rem;font-weight:600;color:var(--text);margin-bottom:2px;word-break:break-all}
+.setting-card .s-sub{font-size:0.8125rem;color:var(--text3)}
+.setting-card .setting-label{font-size:0.75rem;font-weight:600;color:var(--text4);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.setting-card .setting-value{font-size:0.9375rem;font-weight:600;color:var(--text);word-break:break-all}
+.setting-card .setting-value a{color:var(--accent);text-decoration:none}
+.setting-card .setting-value a:hover{text-decoration:underline}
+.setting-card.wide{grid-column:1/-1}
+.setting-path{font-family:monospace;font-size:0.875rem;font-weight:400}
+.setting-bar-wrap{height:4px;background:var(--border);border-radius:4px;margin-top:8px;overflow:hidden}
+.setting-bar{height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
+
+/* ── 대기 중 목록 ── */
+.queue-section{margin-top:8px}
+.queue-title{font-size:0.75rem;font-weight:600;color:var(--text4);margin-bottom:4px;padding:0 2px}
+.queue-row{
+  font-size:0.8125rem;color:var(--text3);padding:4px 6px;
+  border-radius:5px;display:flex;align-items:center;gap:6px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.queue-row .q-num{font-size:0.6875rem;background:var(--bg3);color:var(--text4);
+  padding:1px 5px;border-radius:3px;flex-shrink:0}
+
 /* ── 다운로드 추가 바 ── */
 .dl-add-bar{
   background:var(--bg2);border-bottom:1px solid var(--border);
@@ -585,6 +613,7 @@ header{
   <div class="tab-strip">
     <button class="tab-btn active" data-tab="history">📋 다운로드 기록</button>
     <button class="tab-btn" data-tab="channels">📺 채널 관리</button>
+    <button class="tab-btn" data-tab="settings">⚙️ 설정 정보</button>
   </div>
 
   <!-- 기록 탭 -->
@@ -650,6 +679,13 @@ header{
     <div id="ch-msg" class="ch-msg" style="display:none"></div>
     <div id="ch-list" class="ch-list"></div>
   </div><!-- /tab-channels -->
+
+  <!-- 설정 정보 탭 -->
+  <div id="tab-settings" class="tab-panel">
+    <div id="settings-content" style="padding:16px 0 32px">
+      <div class="loading"><div class="spinner"></div><p>불러오는 중...</p></div>
+    </div>
+  </div><!-- /tab-settings -->
 
 </section>
 
@@ -785,9 +821,13 @@ function statusLabel(s){
   var map={queued:'대기',getting_info:'정보 수집',downloading:'다운로드 중',completed:'완료',failed:'실패',cancelled:'취소'};
   return map[s]||s||'-';
 }
-function updateActivePanel(active){
-  if(!active||active.length===0){ activePanel.classList.remove('visible'); return; }
+function updateActivePanel(active, queueList){
+  if((!active||active.length===0)&&(!queueList||queueList.length===0)){
+    activePanel.classList.remove('visible'); return;
+  }
   activePanel.classList.add('visible');
+  if(!active) active=[];
+  if(!queueList) queueList=[];
   var html='';
   active.forEach(function(t){
     var pct=Math.round(t.progress||0);
@@ -812,6 +852,15 @@ function updateActivePanel(active){
           :'')
       +'</div>';
   });
+  // 대기 중 목록 추가
+  if(queueList.length>0){
+    html+='<div class="queue-section"><div class="queue-title">대기 중 ('+queueList.length+'개)</div>';
+    queueList.forEach(function(q,i){
+      var label=q.url||'#'+q.id;
+      html+='<div class="queue-row"><span class="q-num">'+(i+1)+'</span>'+label+'</div>';
+    });
+    html+='</div>';
+  }
   activeTasks.innerHTML=html;
 }
 
@@ -829,7 +878,7 @@ activeTasks.addEventListener('click',function(e){
 function pollStatus(){
   fetch('/api/status').then(function(r){ return r.json(); }).then(function(st){
     updateStatusBar(st);
-    updateActivePanel(st.active||[]);
+    updateActivePanel(st.active||[], st.queue_list||[]);
     var actCount=st.active?st.active.length:0;
     if(prevActiveCount>0&&actCount===0) fetchHistory();
     prevActiveCount=actCount;
@@ -1015,8 +1064,26 @@ tabBtns.forEach(function(btn){
     var panel=document.getElementById('tab-'+target);
     if(panel) panel.classList.add('visible');
     if(target==='channels') loadChannels();
+    if(target==='settings') loadSettings();
   });
 });
+
+/* ── 설정 정보 ── */
+function loadSettings(){
+  var el=document.getElementById('settings-content');
+  fetch('/api/settings').then(function(r){ return r.json(); }).then(function(d){
+    var diskPct=d.disk_total_gb>0?Math.round((1-d.disk_free_gb/d.disk_total_gb)*100):0;
+    el.innerHTML='<div class="settings-grid">'
+      +'<div class="setting-card"><div class="setting-label">버전</div><div class="setting-value">v'+d.version+'</div></div>'
+      +'<div class="setting-card"><div class="setting-label">최대 동시 다운로드</div><div class="setting-value">'+d.max_parallel+'개</div></div>'
+      +'<div class="setting-card"><div class="setting-label">채널 감시 주기</div><div class="setting-value">'+Math.round(d.watch_poll_interval/60)+'분</div></div>'
+      +'<div class="setting-card"><div class="setting-label">디스크 사용</div><div class="setting-value">'+(d.disk_total_gb-d.disk_free_gb).toFixed(1)+' / '+d.disk_total_gb+' GB ('+diskPct+'%)</div>'
+        +'<div class="setting-bar-wrap"><div class="setting-bar" style="width:'+diskPct+'%"></div></div></div>'
+      +'<div class="setting-card wide"><div class="setting-label">다운로드 폴더</div><div class="setting-value setting-path">'+d.download_dir+'</div></div>'
+      +'<div class="setting-card wide"><div class="setting-label">GitHub 저장소</div><div class="setting-value"><a href="https://github.com/'+d.repo+'" target="_blank">'+d.repo+'</a></div></div>'
+      +'</div>';
+  }).catch(function(){ el.innerHTML='<p style="color:var(--text3);padding:16px">설정을 불러오지 못했습니다.</p>'; });
+}
 
 /* ── 채널 관리 ── */
 var chListEl  = document.getElementById('ch-list');
