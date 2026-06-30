@@ -635,5 +635,5 @@ class DownloadManager:
                     for t in self.active
                 ],
                 "queued":     self.queue.qsize(),
-                "queue_list": [{"id": t.id, "url": t.url} for t in queue_items],
+                "queue_list": [{"id": t.id, "url": t.url, "requested_by": t.requested_by or ""} for t in queue_items],
             }

@@ -472,6 +472,7 @@ header{
 }
 .queue-row .q-num{font-size:0.6875rem;background:var(--bg3);color:var(--text4);
   padding:1px 5px;border-radius:3px;flex-shrink:0}
+.queue-row .q-by{font-size:0.6875rem;color:var(--text4);margin-left:auto;flex-shrink:0}
 
 /* ── 다운로드 추가 바 ── */
 .dl-add-bar{
@@ -892,8 +893,13 @@ function updateActivePanel(active, queueList){
   if(queueList.length>0){
     html+='<div class="queue-section"><div class="queue-title">대기 중 ('+queueList.length+'개)</div>';
     queueList.forEach(function(q,i){
-      var label=q.url||'#'+q.id;
-      html+='<div class="queue-row"><span class="q-num">'+(i+1)+'</span>'+label+'</div>';
+      var url=q.url||'';
+      var m=url.match(/[?&]v=([^&]+)/);
+      var label=m?'youtu.be/'+m[1]:(url.length>50?url.slice(0,47)+'...':url||'#'+q.id);
+      html+='<div class="queue-row"><span class="q-num">'+(i+1)+'</span>'
+        +'<span title="'+url+'">'+label+'</span>'
+        +(q.requested_by?'<span class="q-by">'+q.requested_by+'</span>':'')
+        +'</div>';
     });
     html+='</div>';
   }
@@ -1256,7 +1262,8 @@ function openModal(item){
   var ytUrl='https://www.youtube.com/watch?v='+item.id;
   modalActions.innerHTML=
     '<a class="modal-btn primary" href="'+ytUrl+'" target="_blank">▶ YouTube에서 보기</a>'
-    +'<button class="modal-btn secondary" onclick="copyToClip(\''+ytUrl+'\')">🔗 URL 복사</button>';
+    +'<button class="modal-btn secondary" onclick="copyToClip(\''+ytUrl+'\')">🔗 URL 복사</button>'
+    +'<button class="modal-btn secondary" id="modal-redl-btn" onclick="reDownload(\''+ytUrl+'\')">⬇ 다시 다운로드</button>';
   modalOverlay.classList.add('open');
 }
 function closeModal(){
@@ -1270,6 +1277,15 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape'&&currentMo
 function copyToClip(text){
   if(navigator.clipboard){navigator.clipboard.writeText(text).then(function(){ showToast('URL이 복사되었습니다','ok'); });}
   else{var t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);showToast('URL이 복사되었습니다','ok');}
+}
+function reDownload(url){
+  var btn=document.getElementById('modal-redl-btn');
+  if(btn){ btn.disabled=true; btn.textContent='추가 중...'; }
+  fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})})
+    .then(function(r){ return r.json(); }).then(function(d){
+      if(d.ok){ showToast('다시 다운로드 추가됨 (#'+d.id+')','ok'); closeModal(); pollStatus(); }
+      else{ showToast(d.error||'추가 실패','err'); if(btn){ btn.disabled=false; btn.textContent='⬇ 다시 다운로드'; } }
+    }).catch(function(){ showToast('연결 오류','err'); if(btn){ btn.disabled=false; btn.textContent='⬇ 다시 다운로드'; } });
 }
 
 /* ── 업데이트 확인 ── */
