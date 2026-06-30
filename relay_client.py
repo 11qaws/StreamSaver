@@ -42,6 +42,8 @@ class RelayClient:
         self._guild_id   = None
         self._pair_code  = None     # 연결 전: 페어링 코드
         self._connected  = False
+        self._bot_discord    = False   # Discord 봇 온라인 여부 (릴레이 push)
+        self._last_heartbeat = 0.0     # 마지막 heartbeat 수신 시각 (0=미수신)
         self._task       = None
         self._loop       = None
         self._on_connect_cb        = None
@@ -84,6 +86,23 @@ class RelayClient:
     def guild_id(self):
         return self._guild_id
 
+    @property
+    def has_saved_guild(self) -> bool:
+        """파일 기반 체크 — 시작 직후에도 재연결 여부 즉시 판단 가능"""
+        return bool(self._load_guild_id())
+
+    @property
+    def bot_discord(self) -> bool:
+        """릴레이 서버가 push한 Discord 봇 온라인 여부"""
+        return self._bot_discord
+
+    @property
+    def heartbeat_timeout(self) -> bool:
+        """connected 상태에서 90초 이상 heartbeat 없으면 릴레이 hang 의심"""
+        if not self._connected or self._last_heartbeat == 0.0:
+            return False
+        return time.time() - self._last_heartbeat > 90
+
     def start(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
         self._task = loop.create_task(self._run_forever())
@@ -104,6 +123,7 @@ class RelayClient:
             except Exception as e:
                 logger.warning("Connection error: %s — retry in %ds", e, RECONNECT_DELAY)
             self._connected = False
+            self._last_heartbeat = 0.0
             if self._on_disconnect_cb:
                 self._on_disconnect_cb()
             await asyncio.sleep(RECONNECT_DELAY)
@@ -173,11 +193,22 @@ class RelayClient:
             self._pair_code = None   # 코드 소모됨
             self._save_guild_id(self._guild_id)
             self._clear_pair_code_env()
+            self._last_heartbeat = time.time()              # heartbeat 기준점 초기화
+            self._bot_discord = msg.get("bot_discord", True)  # 연결 즉시 동기화
             logger.info("Paired with guild %s", self._guild_id)
             self._check_server_version(msg.get("server_version", ""))
             if self._on_connect_cb:
                 self._on_connect_cb(self._guild_id)
             await self._push_state()
+
+        elif mtype == "heartbeat":
+            self._last_heartbeat = time.time()
+            self._bot_discord = msg.get("bot_discord", self._bot_discord)
+            logger.debug("Heartbeat: bot_discord=%s", self._bot_discord)
+
+        elif mtype == "bot_status":
+            self._bot_discord = msg.get("bot_discord", self._bot_discord)
+            logger.info("Bot Discord status: %s", "online" if self._bot_discord else "offline")
 
         elif mtype == "error":
             raw = msg.get("message", "알 수 없는 오류")

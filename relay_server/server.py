@@ -2,6 +2,12 @@
 StreamSaver Relay Server
 Oracle Cloud VPS에서 실행 — Discord 봇 + WebSocket 라우터
 다운로드는 하지 않음, 명령 전달만 담당
+
+다중 사용자 격리 원칙:
+- 모든 라우팅은 guild_id 기준으로 완전 격리
+- 공유 루프(heartbeat, bot_status push)에서 개별 오류가 전체에 영향 없도록 try/except 격리
+- 공유 dict 순회 시 list() 스냅샷 사용
+- 에러 로그에 항상 guild_id 포함
 """
 import asyncio
 import json
@@ -27,10 +33,12 @@ logger = logging.getLogger("Relay")
 
 DISCORD_TOKEN  = os.environ["DISCORD_TOKEN"]
 WS_PORT        = int(os.getenv("WS_PORT", "8765"))
-WS_SECRET      = os.getenv("WS_SECRET", "")   # 클라이언트 인증용 공유 비밀키
-SERVER_VERSION = "1.0.10"
+WS_SECRET      = os.getenv("WS_SECRET", "")
+SERVER_VERSION = "1.0.11"
 
 # ── 상태 ─────────────────────────────────────────────────────────────────────
+
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
 
 # guild_id(str) → {"channel_id": int, "ws": websockets.WebSocketServerProtocol}
 guilds: dict[str, dict] = {}
@@ -45,6 +53,41 @@ pending: dict[str, asyncio.Future] = {}
 dl_state: dict[str, dict] = {}
 
 bot: Optional[commands.Bot] = None
+bot_discord_connected: bool = False  # Discord API 연결 상태
+
+
+# ── 상태 영속화 ───────────────────────────────────────────────────────────────
+
+def _load_state():
+    """서버 재시작 후 guild → channel_id 매핑 복구."""
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        for gid, info in data.get("guilds", {}).items():
+            ch = info.get("channel_id")
+            if gid and ch:
+                guilds[gid] = {"channel_id": ch}
+        logger.info("State loaded: %d guilds", len(guilds))
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning("State load error: %s", e)
+
+
+def _save_state():
+    """guild → channel_id 매핑을 파일에 저장."""
+    data = {
+        "guilds": {
+            gid: {"channel_id": info.get("channel_id")}
+            for gid, info in guilds.items()
+            if info.get("channel_id")
+        }
+    }
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.warning("State save error: %s", e)
 
 
 # ── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -61,6 +104,34 @@ def _gen_code() -> str:
 
 def _is_connected(guild_id: str) -> bool:
     return guild_id in guilds and "ws" in guilds[guild_id]
+
+
+async def _push_to_all(payload: str):
+    """모든 연결된 PC에 메시지 전송.
+    개별 사용자 오류가 다른 사용자에게 영향을 주지 않도록 guild별 예외 격리."""
+    for gid, info in list(guilds.items()):  # 스냅샷으로 순회 — dict 변경 안전
+        ws = info.get("ws")
+        if ws:
+            try:
+                await ws.send(payload)
+            except Exception as e:
+                logger.debug("push_to_all guild=%s error: %s", gid, e)
+
+
+async def _heartbeat_loop():
+    """45초마다 모든 PC에 heartbeat 전송.
+    릴레이 hang 감지 + 봇 Discord 상태 정기 동기화."""
+    while True:
+        await asyncio.sleep(45)
+        connected_count = sum(1 for g in guilds.values() if g.get("ws"))
+        if connected_count == 0:
+            continue
+        payload = json.dumps({
+            "type":        "heartbeat",
+            "bot_discord": bot_discord_connected,
+        })
+        await _push_to_all(payload)
+        logger.debug("Heartbeat sent to %d clients", connected_count)
 
 
 async def _send_cmd(guild_id: str, cmd: str, args: dict, timeout: float = 12.0) -> str:
@@ -86,7 +157,7 @@ async def _send_cmd(guild_id: str, cmd: str, args: dict, timeout: float = 12.0) 
     except asyncio.TimeoutError:
         return "⏱️ 응답 없음 — PC가 켜져 있고 StreamSaver가 실행 중인지 확인하세요."
     except Exception as e:
-        logger.error("send_cmd error: %s", e)
+        logger.error("send_cmd error guild=%s: %s", guild_id, e)
         return f"❌ 오류: {e}"
     finally:
         pending.pop(cmd_id, None)
@@ -104,12 +175,13 @@ async def _channel_send(guild_id: str, content: str):
         try:
             await ch.send(content)
         except Exception as e:
-            logger.warning("channel_send error: %s", e)
+            logger.warning("channel_send guild=%s error: %s", guild_id, e)
 
 
 # ── WebSocket 서버 ────────────────────────────────────────────────────────────
 
 async def ws_handler(ws):
+    """각 PC 연결마다 독립 코루틴으로 실행 — 연결 오류가 다른 사용자에게 영향 없음."""
     guild_id: Optional[str] = None
     addr = ws.remote_address
     logger.info("WS connected: %s", addr)
@@ -137,8 +209,12 @@ async def ws_handler(ws):
                     guilds[gid] = {}
                 guilds[gid]["ws"] = ws
                 guild_id = gid
-                await ws.send(json.dumps({"type": "pair_ok", "guild_id": guild_id,
-                                          "server_version": SERVER_VERSION}))
+                await ws.send(json.dumps({
+                    "type":           "pair_ok",
+                    "guild_id":       guild_id,
+                    "server_version": SERVER_VERSION,
+                    "bot_discord":    bot_discord_connected,
+                }))
                 logger.info("Reconnected: guild=%s addr=%s", guild_id, addr)
                 asyncio.create_task(_channel_send(guild_id, "✅ StreamSaver PC가 재연결되었습니다."))
 
@@ -162,11 +238,13 @@ async def ws_handler(ws):
                     guilds[guild_id] = {}
                 guilds[guild_id]["ws"] = ws
 
-                await ws.send(json.dumps({"type": "pair_ok", "guild_id": guild_id,
-                                          "server_version": SERVER_VERSION}))
+                await ws.send(json.dumps({
+                    "type":           "pair_ok",
+                    "guild_id":       guild_id,
+                    "server_version": SERVER_VERSION,
+                    "bot_discord":    bot_discord_connected,
+                }))
                 logger.info("Paired: guild=%s addr=%s", guild_id, addr)
-
-                # 채널에 연결 알림
                 asyncio.create_task(_channel_send(
                     guild_id, "✅ StreamSaver PC가 연결되었습니다."))
 
@@ -193,7 +271,7 @@ async def ws_handler(ws):
     except websockets.exceptions.ConnectionClosed:
         pass
     except Exception as e:
-        logger.error("ws_handler error: %s", e)
+        logger.error("ws_handler error guild=%s: %s", guild_id, e)
     finally:
         if guild_id and guilds.get(guild_id, {}).get("ws") is ws:
             del guilds[guild_id]["ws"]
@@ -208,6 +286,39 @@ class RelayCog(commands.Cog):
     def __init__(self, b: commands.Bot):
         self.bot = b
 
+    # ── Discord 연결 이벤트 ──────────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        global bot_discord_connected
+        bot_discord_connected = True
+        logger.info("Bot logged in as %s", self.bot.user)
+        # 이전 로컬 봇이 길드별로 등록한 커맨드 정리
+        for guild in self.bot.guilds:
+            self.bot.tree.clear_commands(guild=guild)
+            await self.bot.tree.sync(guild=guild)
+        # 글로벌 슬래시 커맨드 등록
+        synced = await self.bot.tree.sync()
+        logger.info("Synced %d slash commands", len(synced))
+        asyncio.create_task(_push_to_all(json.dumps({
+            "type": "bot_status", "bot_discord": True})))
+
+    @commands.Cog.listener()
+    async def on_disconnect(self):
+        global bot_discord_connected
+        bot_discord_connected = False
+        logger.warning("Bot disconnected from Discord")
+        asyncio.create_task(_push_to_all(json.dumps({
+            "type": "bot_status", "bot_discord": False})))
+
+    @commands.Cog.listener()
+    async def on_resumed(self):
+        global bot_discord_connected
+        bot_discord_connected = True
+        logger.info("Bot connection resumed")
+        asyncio.create_task(_push_to_all(json.dumps({
+            "type": "bot_status", "bot_discord": True})))
+
     # ── /setup ───────────────────────────────────────────────────────────────
 
     @app_commands.command(name="setup", description="이 채널을 StreamSaver 채널로 설정합니다")
@@ -217,6 +328,7 @@ class RelayCog(commands.Cog):
         if gid not in guilds:
             guilds[gid] = {}
         guilds[gid]["channel_id"] = interaction.channel_id
+        _save_state()  # channel_id 영속화
 
         # 이미 PC가 연결돼 있으면 코드 불필요
         if _is_connected(gid):
@@ -307,6 +419,7 @@ class RelayCog(commands.Cog):
         await interaction.response.send_message(
             f"**StreamSaver 상태**\n"
             f"🖥️ PC 연결: {'✅' if connected else '❌ 연결 안 됨'}\n"
+            f"🤖 봇 Discord: {'✅' if bot_discord_connected else '❌'}\n"
             f"⬇️ 진행 중: {active}개\n"
             f"📋 대기: {queued}개"
         )
@@ -379,17 +492,6 @@ class RelayCog(commands.Cog):
             ephemeral=True,
         )
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        logger.info("Bot logged in as %s", self.bot.user)
-        # 이전 로컬 봇이 길드별로 등록한 커맨드 정리
-        for guild in self.bot.guilds:
-            self.bot.tree.clear_commands(guild=guild)
-            await self.bot.tree.sync(guild=guild)
-        # 글로벌 슬래시 커맨드 등록
-        synced = await self.bot.tree.sync()
-        logger.info("Synced %d slash commands", len(synced))
-
 
 class RelayBot(commands.Bot):
     def __init__(self):
@@ -404,6 +506,7 @@ class RelayBot(commands.Bot):
 
 async def main():
     global bot
+    _load_state()
     bot = RelayBot()
 
     ws_server = await websockets.serve(
@@ -412,6 +515,8 @@ async def main():
         ping_timeout=20,
     )
     logger.info("WebSocket server listening on port %d", WS_PORT)
+
+    asyncio.create_task(_heartbeat_loop())
 
     async with bot:
         await bot.start(DISCORD_TOKEN)

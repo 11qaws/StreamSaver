@@ -291,7 +291,12 @@ class GUIManager:
             TrayState.UPDATE:      "업데이트 있음",
         }[state]
         mode_label = "🌐 온라인" if self._mode == "relay" else "💻 로컬"
-        lines = [f"StreamSaver  ·  {mode_label}  ·  {label}"]
+        rc = self.ctx.rc if self.ctx else None
+        if self._mode == "relay" and rc and rc.connected:
+            bot_s = "봇 ✅" if rc.bot_discord else "봇 ❌"
+            lines = [f"StreamSaver  ·  {mode_label}  ·  {label}  ·  {bot_s}"]
+        else:
+            lines = [f"StreamSaver  ·  {mode_label}  ·  {label}"]
 
         # 다운로드 현황
         dm = self.ctx.dm if self.ctx else None
@@ -389,7 +394,7 @@ class GUIManager:
         if self._mode == "relay":
             if rc and rc.connected:
                 mode_txt = "🌐 온라인 모드  —  연결됨"
-            elif rc and rc.guild_id:
+            elif rc and (rc.guild_id or rc.has_saved_guild):
                 mode_txt = "🔄 온라인 모드  —  재연결 중..."
             else:
                 mode_txt = "🔌 온라인 모드  —  연결 필요"
@@ -398,7 +403,7 @@ class GUIManager:
         yield pystray.MenuItem(mode_txt, None, enabled=False)
 
         if self._mode == "relay" and not (rc and rc.connected):
-            if not (rc and rc.guild_id):
+            if not (rc and rc.has_saved_guild):
                 # 첫 설치 또는 리셋 — 봇 초대 + 서버 연결 모두 표시
                 invite_url = getattr(config, "BOT_INVITE_URL", "")
                 if invite_url:
@@ -407,7 +412,7 @@ class GUIManager:
                         lambda icon, item: self._open_url(invite_url),
                     )
                 yield pystray.MenuItem("🔗 2단계: 서버 연결", self._connect_server)
-            # guild_id 있으면 자동 재연결 중 — 버튼 없음
+            # has_saved_guild 있으면 자동 재연결 중 — 버튼 없음
         yield pystray.Menu.SEPARATOR
 
         # ② 주요 액션
@@ -498,6 +503,19 @@ class GUIManager:
             def _ticker():
                 while gui._running:
                     time.sleep(5)
+                    rc = gui.ctx.rc if gui.ctx else None
+                    if rc and rc.connected:
+                        if rc.heartbeat_timeout:
+                            gui.add_warning("relay_hang", "릴레이 서버 무응답 (90초 초과)")
+                        else:
+                            gui.clear_warning("relay_hang")
+                        if not rc.bot_discord:
+                            gui.add_warning("bot_discord", "Discord 봇 오프라인")
+                        else:
+                            gui.clear_warning("bot_discord")
+                    else:
+                        gui.clear_warning("relay_hang")
+                        gui.clear_warning("bot_discord")
                     gui._refresh()
             threading.Thread(target=_ticker, daemon=True).start()
 
@@ -545,7 +563,7 @@ class GUIManager:
             dlg.attributes("-topmost", True)
             dlg.grab_set()
 
-            W, H = 380, 370
+            W, H = 380, 430
             sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
             dlg.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
 
@@ -579,16 +597,16 @@ class GUIManager:
                      font=("Segoe UI", 9), bg=HEADER, fg="#bfdbfe").pack(anchor="w")
 
             # ── 본문 ─────────────────────────────────────────────
-            body = tk.Frame(dlg, bg=BG, padx=24, pady=20)
+            body = tk.Frame(dlg, bg=BG, padx=24, pady=16)
             body.pack(fill="both", expand=True)
 
             tk.Label(body,
                      text="Discord에서 /setup 을 입력하고 받은 코드를 입력하세요.",
-                     font=("Segoe UI", 9), bg=BG, fg=TEXT,
+                     font=("Segoe UI", 10), bg=BG, fg=TEXT,
                      wraplength=330, justify="left").pack(anchor="w")
             tk.Label(body,
                      text="아직 /setup을 실행하지 않았다면 먼저 Discord를 여세요.",
-                     font=("Segoe UI", 9), bg=BG, fg=SUB,
+                     font=("Segoe UI", 10), bg=BG, fg=SUB,
                      wraplength=330, justify="left").pack(anchor="w", pady=(2, 16))
 
             # Discord 열기 버튼
@@ -602,7 +620,7 @@ class GUIManager:
             disc_i = tk.Frame(disc_f, bg=SEC, pady=9)
             disc_i.pack(fill="x")
             disc_l = tk.Label(disc_i, text="🔗   Discord 열기",
-                              font=("Segoe UI", 9), bg=SEC, fg=TEXT, cursor="hand2")
+                              font=("Segoe UI", 10), bg=SEC, fg=TEXT, cursor="hand2")
             disc_l.pack()
             _cb_disc = lambda e: webbrowser.open("https://discord.com/app")
             for w in (disc_f, disc_i, disc_l):
@@ -611,7 +629,7 @@ class GUIManager:
                 w.bind("<Leave>", lambda e, i=disc_i, l=disc_l: _hover(i, l, False))
 
             # 입력 필드
-            tk.Label(body, text="페어링 코드", font=("Segoe UI", 9, "bold"),
+            tk.Label(body, text="페어링 코드", font=("Segoe UI", 10, "bold"),
                      bg=BG, fg=TEXT).pack(anchor="w", pady=(0, 6))
 
             ef = tk.Frame(body, bg=BORDER, pady=1, padx=1)
@@ -623,12 +641,12 @@ class GUIManager:
             entry.bind("<Return>", _submit)
             entry.focus_set()
 
-            tk.Label(body, text="예: ABC-123", font=("Segoe UI", 8),
+            tk.Label(body, text="예: ABC-123", font=("Segoe UI", 9),
                      bg=BG, fg=SUB).pack(anchor="w", pady=(4, 0))
 
             # ── 하단 버튼 ─────────────────────────────────────────
             foot = tk.Frame(body, bg=BG)
-            foot.pack(fill="x", pady=(20, 0))
+            foot.pack(fill="x", pady=(16, 0))
 
             def _btn_hover(f, l, bg, hbg, on):
                 c = hbg if on else bg
@@ -637,7 +655,7 @@ class GUIManager:
             # 취소
             can_f = tk.Frame(foot, bg=SEC, pady=9, padx=20)
             can_f.pack(side="right", padx=(8, 0))
-            can_l = tk.Label(can_f, text="취소", font=("Segoe UI", 9),
+            can_l = tk.Label(can_f, text="취소", font=("Segoe UI", 10),
                              bg=SEC, fg=TEXT, cursor="hand2")
             can_l.pack()
             for w in (can_f, can_l):
@@ -648,7 +666,7 @@ class GUIManager:
             # 연결
             con_f = tk.Frame(foot, bg=PRIMARY, pady=9, padx=28)
             con_f.pack(side="right")
-            con_l = tk.Label(con_f, text="연결", font=("Segoe UI", 9, "bold"),
+            con_l = tk.Label(con_f, text="연결", font=("Segoe UI", 10, "bold"),
                              bg=PRIMARY, fg="white", cursor="hand2")
             con_l.pack()
             for w in (con_f, con_l):
