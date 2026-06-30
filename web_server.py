@@ -61,6 +61,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._live_status()
             elif path == "/api/channels":
                 self._channels_list()
+            elif path == "/api/version":
+                self._json({"version": config.APP_VERSION, "repo": config.GITHUB_REPO})
             else:
                 self.send_error(404)
         except Exception as e:

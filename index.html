@@ -347,6 +347,73 @@ header{
 [data-theme="dark"] .ch-msg.ok{background:#064e3b;color:#6ee7b7}
 [data-theme="dark"] .ch-msg.err{background:#450a0a;color:#fca5a5}
 
+/* ── 업데이트 배너 ── */
+.update-banner{
+  background:linear-gradient(90deg,#1d4ed8,#2563eb);color:#fff;
+  font-size:0.875rem;text-align:center;padding:8px 24px;
+  display:none;
+}
+.update-banner.visible{display:block}
+.update-banner a{color:#bfdbfe;text-decoration:underline;font-weight:500;margin-left:8px}
+.update-banner a:hover{color:#fff}
+
+/* ── 통계 요약 ── */
+.stats-summary{
+  display:flex;gap:0;border:1px solid var(--border);border-radius:12px;
+  overflow:hidden;margin:14px 0 4px;background:var(--bg2)
+}
+.stat-card{
+  flex:1;padding:14px 16px;border-right:1px solid var(--border);text-align:center
+}
+.stat-card:last-child{border-right:none}
+.stat-card .s-val{font-size:1.375rem;font-weight:700;color:var(--text);letter-spacing:-0.02em}
+.stat-card .s-label{font-size:0.75rem;color:var(--text4);margin-top:2px}
+
+/* ── 카드 상세 모달 ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .15s ease
+}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{
+  background:var(--bg);border-radius:16px;width:100%;max-width:560px;
+  max-height:90vh;overflow-y:auto;padding:24px;position:relative;
+  box-shadow:0 20px 60px rgba(0,0,0,.2);
+  transform:translateY(12px);transition:transform .15s ease
+}
+.modal-overlay.open .modal{transform:translateY(0)}
+.modal-close{
+  position:absolute;top:16px;right:16px;
+  width:28px;height:28px;border-radius:6px;border:1px solid var(--border);
+  background:var(--bg2);color:var(--text3);cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;transition:all .1s ease
+}
+.modal-close:hover{background:var(--bg3);color:var(--text)}
+.modal-thumb{
+  width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;
+  background:var(--bg3);margin-bottom:16px;display:block
+}
+.modal-title{font-size:1.0625rem;font-weight:700;color:var(--text);margin-bottom:12px;line-height:1.4}
+.modal-rows{display:flex;flex-direction:column;gap:8px}
+.modal-row{
+  display:flex;gap:12px;font-size:0.875rem;
+  border-bottom:1px solid var(--border);padding-bottom:8px
+}
+.modal-row:last-child{border-bottom:none;padding-bottom:0}
+.modal-row .m-key{color:var(--text4);width:80px;flex-shrink:0}
+.modal-row .m-val{color:var(--text2);word-break:break-all;flex:1}
+.modal-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.modal-btn{
+  padding:8px 16px;border-radius:8px;font-size:0.875rem;font-weight:500;
+  cursor:pointer;transition:all .15s ease;border:1px solid var(--border);
+  background:var(--bg2);color:var(--text2);text-decoration:none;
+  display:inline-flex;align-items:center;gap:6px
+}
+.modal-btn:hover{background:var(--bg3);text-decoration:none}
+.modal-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.modal-btn.primary:hover{background:var(--accentH)}
+
 /* ── 모드 분리 ── */
 .mode-dashboard .gh-only{display:none!important}
 .mode-github .app-only{display:none!important}
@@ -415,6 +482,12 @@ header{
   </div>
 </div>
 
+<!-- 업데이트 배너 -->
+<div class="update-banner app-only" id="update-banner">
+  <span id="update-text">새 버전이 출시되었습니다!</span>
+  <a id="update-link" href="#" target="_blank">지금 다운로드</a>
+</div>
+
 <!-- 활성 다운로드 패널 -->
 <div class="active-panel app-only" id="active-panel">
   <div class="active-panel-inner">
@@ -460,6 +533,12 @@ header{
 
   <!-- 기록 탭 -->
   <div id="tab-history" class="tab-panel visible">
+    <div id="stats-summary" class="stats-summary" style="display:none">
+      <div class="stat-card"><div class="s-val" id="ss-total">-</div><div class="s-label">전체 다운로드</div></div>
+      <div class="stat-card"><div class="s-val" id="ss-size">-</div><div class="s-label">총 용량</div></div>
+      <div class="stat-card"><div class="s-val" id="ss-mem">-</div><div class="s-label">멤버십 비율</div></div>
+      <div class="stat-card"><div class="s-val" id="ss-ch">-</div><div class="s-label">채널 수</div></div>
+    </div>
     <div id="chart-section" class="chart-section" style="display:none">
       <div class="chart-title">채널별 다운로드</div>
       <div class="chart-wrap" id="chart-wrap"></div>
@@ -519,6 +598,17 @@ header{
 </section>
 
 </main>
+
+<!-- 카드 상세 모달 -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" id="modal-close">✕</button>
+    <img class="modal-thumb" id="modal-thumb" src="" alt="">
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-rows" id="modal-rows"></div>
+    <div class="modal-actions" id="modal-actions"></div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -733,6 +823,7 @@ function fetchHistory(){
     renderFiltered();
     updateHeaderStats();
     renderChart(allData);
+    updateStatsSummary(allData);
     lastUpdate.textContent=nowTime()+' 업데이트';
   });
 }
@@ -779,16 +870,15 @@ function updateChannelFilter(){
 }
 
 /* ── 카드 렌더 ── */
-function renderCard(item){
+function renderCard(item, idx){
   var thumb=item.thumbnail||'https://img.youtube.com/vi/'+item.id+'/mqdefault.jpg';
   var dur=fmtDur(item.duration);
   var date=fmtDate(item.upload_date);
   var size=item.file_size_str||fmtSize(item.file_size);
-  var url='https://www.youtube.com/watch?v='+item.id;
   var badges='';
   if(item.is_membership) badges+='<span class="badge badge-membership">🔒 멤버십</span>';
   if(item.upload_to) badges+='<span class="badge badge-gdrive">☁️ Drive</span>';
-  return '<div class="card" onclick="window.open(\''+url+'\',\'_blank\')">'
+  return '<div class="card" data-idx="'+idx+'">'
     +'<div class="card-thumb">'
     +'<img src="'+thumb+'" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'<div style=\\\'padding:35% 0;text-align:center;color:var(--border2);font-size:1.5rem\\\'>🎬</div>\'">'
     +(dur?'<span class="dur">'+dur+'</span>':'')
@@ -807,6 +897,17 @@ function renderCard(item){
     +'</div>';
 }
 
+/* ── 카드 클릭 → 모달 (이벤트 위임) ── */
+cardsEl.addEventListener('click',function(e){
+  var card=e.target.closest('.card[data-idx]');
+  if(!card) return;
+  var filtered=applyFilters(allData);
+  var start=(currentPage-1)*PER_PAGE;
+  var localIdx=parseInt(card.dataset.idx);
+  var item=filtered[start+localIdx];
+  if(item) openModal(item);
+});
+
 /* ── 렌더 ── */
 function render(filtered){
   var total=filtered.length;
@@ -821,7 +922,7 @@ function render(filtered){
   cardsEl.style.display='block';
   var start=(currentPage-1)*PER_PAGE;
   var pageItems=filtered.slice(start,start+PER_PAGE);
-  cardsEl.innerHTML=pageItems.map(renderCard).join('');
+  cardsEl.innerHTML=pageItems.map(function(item,i){ return renderCard(item,i); }).join('');
   var totalPages=Math.ceil(total/PER_PAGE);
   resultInfo.textContent=total+'개 중 '+pageItems.length+'개 표시';
   if(totalPages>1){
@@ -935,12 +1036,97 @@ membershipCheck.addEventListener('change',function(){
   currentPage=1; render(applyFilters(allData));
 });
 
+/* ── 통계 요약 ── */
+var statsSummary = document.getElementById('stats-summary');
+function updateStatsSummary(all){
+  if(!all||all.length===0){ statsSummary.style.display='none'; return; }
+  statsSummary.style.display='flex';
+  var mem=all.filter(function(e){ return e.is_membership; }).length;
+  var channels={};
+  all.forEach(function(e){ channels[e.channel||'Unknown']=true; });
+  setText('ss-total', all.length+'개');
+  setText('ss-size', fmtSize(all.reduce(function(s,e){ return s+(e.file_size||0); },0)));
+  setText('ss-mem', all.length ? Math.round(mem/all.length*100)+'%' : '0%');
+  setText('ss-ch', Object.keys(channels).length+'개');
+}
+
+/* ── 카드 상세 모달 ── */
+var modalOverlay = document.getElementById('modal-overlay');
+var modalThumb   = document.getElementById('modal-thumb');
+var modalTitle   = document.getElementById('modal-title');
+var modalRows    = document.getElementById('modal-rows');
+var modalActions = document.getElementById('modal-actions');
+var modalClose   = document.getElementById('modal-close');
+var currentModal = null;
+
+function openModal(item){
+  currentModal = item;
+  var thumb = item.thumbnail || 'https://img.youtube.com/vi/'+item.id+'/mqdefault.jpg';
+  modalThumb.src = thumb;
+  modalThumb.onerror = function(){ modalThumb.style.display='none'; };
+  modalTitle.textContent = item.title || '(제목 없음)';
+  var rows=[
+    ['채널', item.channel||'-'],
+    ['영상 ID', item.id||'-'],
+    ['업로드 날짜', fmtDate(item.upload_date)||'-'],
+    ['재생 시간', fmtDur(item.duration)||'-'],
+    ['파일 크기', fmtSize(item.file_size)],
+    ['멤버십', item.is_membership?'예':'아니오'],
+  ];
+  if(item.upload_to) rows.push(['Drive 업로드', item.upload_to]);
+  if(item.file_path) rows.push(['파일 경로', item.file_path]);
+  modalRows.innerHTML=rows.map(function(r){
+    return '<div class="modal-row"><span class="m-key">'+r[0]+'</span><span class="m-val">'+r[1]+'</span></div>';
+  }).join('');
+  var ytUrl='https://www.youtube.com/watch?v='+item.id;
+  modalActions.innerHTML='<a class="modal-btn primary" href="'+ytUrl+'" target="_blank">▶ YouTube에서 보기</a>';
+  modalOverlay.classList.add('open');
+}
+function closeModal(){
+  modalOverlay.classList.remove('open');
+  currentModal=null;
+}
+modalClose.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', function(e){ if(e.target===modalOverlay) closeModal(); });
+document.addEventListener('keydown', function(e){ if(e.key==='Escape'&&currentModal) closeModal(); });
+
+/* ── 업데이트 확인 ── */
+var updateBanner = document.getElementById('update-banner');
+var updateLink   = document.getElementById('update-link');
+function checkForUpdate(){
+  fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
+    var current=d.version;
+    var repo=d.repo||'11qaws/StreamSaver';
+    fetch('https://api.github.com/repos/'+repo+'/releases/latest',{
+      headers:{'Accept':'application/vnd.github+json'}
+    }).then(function(r){ return r.json(); }).then(function(rel){
+      var latest=(rel.tag_name||'').replace('v','');
+      if(!latest||!current) return;
+      var cv=current.split('.').map(Number);
+      var lv=latest.split('.').map(Number);
+      for(var i=0;i<3;i++){
+        if((lv[i]||0)>(cv[i]||0)){
+          var url=rel.assets&&rel.assets[0]?rel.assets[0].browser_download_url:rel.html_url;
+          updateLink.href=url;
+          updateLink.textContent='v'+latest+' 다운로드';
+          document.getElementById('update-text').textContent='v'+latest+' 버전이 출시되었습니다! ';
+          updateBanner.className='update-banner app-only visible';
+          return;
+        }
+        if((cv[i]||0)>(lv[i]||0)) return;
+      }
+    }).catch(function(){});
+  }).catch(function(){});
+}
+
 /* ── 초기화 ── */
 function initLocal(){
   fetchHistory().catch(function(){ loadingEl.style.display='none'; errorState.style.display='block'; });
   pollStatus();
   setInterval(pollStatus, 5000);
   setInterval(function(){ if(!document.hidden) fetchHistory().catch(function(){}); }, 30000);
+  // 업데이트 확인: 10초 후 1회 (시작 시 API 부하 분산)
+  setTimeout(checkForUpdate, 10000);
 }
 initLocal();
 
