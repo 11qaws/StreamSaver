@@ -63,11 +63,17 @@ class StreamWatcher:
              "title_filter": info["title_filter"]}
             for url, info in self._channels.items()
         ]}
+        tmp = self._file + ".tmp"
         try:
-            with open(self._file, "w", encoding="utf-8") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, self._file)
         except Exception as e:
             logger.error("watch_channels.json save error: %s", e)
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
 
     # ── 채널 관리 ──────────────────────────────────────────────────────────────
 

@@ -338,6 +338,8 @@ class GUIManager:
         """📡 Unarchived 서브메뉴"""
         import pystray
         sw = self.ctx.sw if self.ctx else None
+        yield pystray.MenuItem("⚙️ 관리 창 열기...", self._manage_unarchived)
+        yield pystray.Menu.SEPARATOR
         if sw is None:
             yield pystray.MenuItem("기능 비활성화", None, enabled=False)
             return
@@ -362,6 +364,7 @@ class GUIManager:
             lambda icon, item: _autostart_set(not _autostart_is_enabled()),
             checked=lambda item: _autostart_is_enabled(),
         )
+        yield pystray.MenuItem("📁 다운로드 폴더 변경", self._change_download_folder)
         yield pystray.Menu.SEPARATOR
         # 상세 정보
         elapsed = int(time.time() - self._start_time)
@@ -689,6 +692,7 @@ class GUIManager:
 
     def _update_env_key(self, key: str, value: str):
         env_path = os.path.join(config.BASE_DIR, ".env")
+        tmp_path = env_path + ".tmp"
         try:
             lines = []
             found = False
@@ -702,10 +706,268 @@ class GUIManager:
                             lines.append(line)
             if not found:
                 lines.append(f"{key}={value}\n")
-            with open(env_path, "w", encoding="utf-8") as f:
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
+            os.replace(tmp_path, env_path)
         except Exception as e:
             logger.error("env update error: %s", e)
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def _change_download_folder(self, icon=None, item=None):
+        def _dialog():
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            new_dir = filedialog.askdirectory(
+                title="다운로드 폴더 선택",
+                initialdir=config.DOWNLOAD_DIR,
+                parent=root,
+            )
+            root.destroy()
+            if not new_dir:
+                return
+            new_dir = os.path.normpath(new_dir)
+            config.DOWNLOAD_DIR = new_dir
+            os.makedirs(new_dir, exist_ok=True)
+            self._update_env_key("DOWNLOAD_DIR", new_dir)
+            self.notify("StreamSaver", f"다운로드 폴더 변경됨:\n{new_dir}")
+            self._refresh()
+        threading.Thread(target=_dialog, daemon=True).start()
+
+    def _manage_unarchived(self, icon=None, item=None):
+        def _dialog():
+            import tkinter as tk
+            from tkinter import messagebox
+            from stream_watcher import StreamWatcher as SW
+
+            BG      = "#ffffff"
+            HEADER  = "#2563eb"
+            PRIMARY = "#2563eb"
+            P_HOV   = "#1d4ed8"
+            SEC     = "#f3f4f6"
+            S_HOV   = "#e5e7eb"
+            TEXT    = "#111827"
+            SUB     = "#6b7280"
+            BORDER  = "#e5e7eb"
+            DELETE  = "#dc2626"
+            D_HOV   = "#b91c1c"
+
+            sw = self.ctx.sw if self.ctx else None
+
+            root = tk.Tk()
+            root.withdraw()
+
+            dlg = tk.Toplevel(root)
+            dlg.title("StreamSaver — Unarchived 관리")
+            dlg.configure(bg=BG)
+            dlg.resizable(False, False)
+            dlg.attributes("-topmost", True)
+
+            W, H = 420, 460
+            scr_w = dlg.winfo_screenwidth()
+            scr_h = dlg.winfo_screenheight()
+            dlg.geometry(f"{W}x{H}+{(scr_w-W)//2}+{(scr_h-H)//2}")
+            dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+
+            # Header
+            from PIL import ImageTk
+            hdr = tk.Frame(dlg, bg=HEADER, height=76)
+            hdr.pack(fill="x")
+            hdr.pack_propagate(False)
+
+            icon_pil   = _make_icon(TrayState.IDLE).resize((44, 44))
+            icon_photo = ImageTk.PhotoImage(icon_pil)
+            ico_lbl    = tk.Label(hdr, image=icon_photo, bg=HEADER)
+            ico_lbl.image = icon_photo
+            ico_lbl.pack(side="left", padx=(20, 12), pady=16)
+
+            hdr_text = tk.Frame(hdr, bg=HEADER)
+            hdr_text.pack(side="left")
+            tk.Label(hdr_text, text="StreamSaver",
+                     font=("Segoe UI", 13, "bold"), bg=HEADER, fg="white").pack(anchor="w")
+            tk.Label(hdr_text, text="Unarchived 감지 관리",
+                     font=("Segoe UI", 9), bg=HEADER, fg="#bfdbfe").pack(anchor="w")
+
+            # Body
+            body = tk.Frame(dlg, bg=BG, padx=24, pady=16)
+            body.pack(fill="both", expand=True)
+
+            tk.Label(body, text="감시 중인 채널",
+                     font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT).pack(anchor="w", pady=(0, 6))
+
+            list_frame = tk.Frame(body, bg=BORDER, pady=1, padx=1)
+            list_frame.pack(fill="both", expand=True)
+            list_inner = tk.Frame(list_frame, bg=BG)
+            list_inner.pack(fill="both", expand=True)
+
+            sb = tk.Scrollbar(list_inner)
+            sb.pack(side="right", fill="y")
+            listbox = tk.Listbox(
+                list_inner,
+                font=("Segoe UI", 10),
+                bg=BG, fg=TEXT,
+                selectbackground=PRIMARY, selectforeground="white",
+                relief="flat", bd=0,
+                yscrollcommand=sb.set,
+                activestyle="none",
+            )
+            listbox.pack(fill="both", expand=True, padx=8, pady=8)
+            sb.config(command=listbox.yview)
+
+            _url_list = []
+
+            def _refresh_list():
+                listbox.delete(0, tk.END)
+                _url_list.clear()
+                channels = sw.list_channels() if sw else []
+                for url, info in channels:
+                    filt  = info["title_filter"] or "전체"
+                    label = SW.display_name(info)
+                    listbox.insert(tk.END, f"  {label}  [{filt}]")
+                    _url_list.append(url)
+                if not _url_list:
+                    listbox.insert(tk.END, "  등록된 채널 없음")
+
+            _refresh_list()
+
+            def _btn_hover(f, l, bg, hbg, on):
+                c = hbg if on else bg
+                f.configure(bg=c)
+                l.configure(bg=c)
+
+            btn_row = tk.Frame(body, bg=BG)
+            btn_row.pack(fill="x", pady=(10, 0))
+
+            def _delete():
+                sel = listbox.curselection()
+                if not sel or sel[0] >= len(_url_list):
+                    messagebox.showinfo("알림", "삭제할 채널을 선택하세요.", parent=dlg)
+                    return
+                url = _url_list[sel[0]]
+                if sw:
+                    sw.remove(url)
+                    self._refresh()
+                _refresh_list()
+
+            del_f = tk.Frame(btn_row, bg=DELETE, pady=8, padx=16)
+            del_f.pack(side="right", padx=(6, 0))
+            del_l = tk.Label(del_f, text="삭제", font=("Segoe UI", 10, "bold"),
+                             bg=DELETE, fg="white", cursor="hand2")
+            del_l.pack()
+            for w in (del_f, del_l):
+                w.bind("<Button-1>", lambda e: _delete())
+                w.bind("<Enter>",   lambda e: _btn_hover(del_f, del_l, DELETE, D_HOV, True))
+                w.bind("<Leave>",   lambda e: _btn_hover(del_f, del_l, DELETE, D_HOV, False))
+
+            def _add():
+                sub = tk.Toplevel(dlg)
+                sub.title("채널 추가")
+                sub.configure(bg=BG)
+                sub.resizable(False, False)
+                sub.attributes("-topmost", True)
+                sub.grab_set()
+
+                W2, H2 = 360, 275
+                sub.geometry(f"{W2}x{H2}+{(scr_w-W2)//2}+{(scr_h-H2)//2}")
+                sub.protocol("WM_DELETE_WINDOW", sub.destroy)
+
+                body2 = tk.Frame(sub, bg=BG, padx=24, pady=18)
+                body2.pack(fill="both", expand=True)
+
+                def _field(label_text, default=""):
+                    tk.Label(body2, text=label_text,
+                             font=("Segoe UI", 10, "bold"), bg=BG, fg=TEXT).pack(
+                                 anchor="w", pady=(8, 2))
+                    ef = tk.Frame(body2, bg=BORDER, pady=1, padx=1)
+                    ef.pack(fill="x")
+                    e = tk.Entry(ef, font=("Segoe UI", 10), bg="#f9fafb", fg=TEXT,
+                                 insertbackground=TEXT, relief="flat", bd=8)
+                    e.insert(0, default)
+                    e.pack(fill="x")
+                    return e
+
+                url_e    = _field("YouTube 채널 URL *")
+                name_e   = _field("표시 이름 (선택)")
+                filter_e = _field("필터 키워드", "unarchived")
+                url_e.focus_set()
+
+                def _confirm(e=None):
+                    url = url_e.get().strip()
+                    if not url.startswith(("http://", "https://")):
+                        messagebox.showwarning("입력 오류",
+                                               "올바른 YouTube URL을 입력하세요.", parent=sub)
+                        return
+                    name = name_e.get().strip()
+                    filt = filter_e.get().strip()
+                    if sw:
+                        sw.add(url, name, filt)
+                        self._refresh()
+                    sub.destroy()
+                    _refresh_list()
+
+                url_e.bind("<Return>", _confirm)
+                sub.protocol("WM_DELETE_WINDOW", sub.destroy)
+
+                foot_s = tk.Frame(body2, bg=BG)
+                foot_s.pack(fill="x", pady=(16, 0))
+
+                can_f2 = tk.Frame(foot_s, bg=SEC, pady=8, padx=16)
+                can_f2.pack(side="right", padx=(6, 0))
+                can_l2 = tk.Label(can_f2, text="취소", font=("Segoe UI", 10),
+                                  bg=SEC, fg=TEXT, cursor="hand2")
+                can_l2.pack()
+                for w in (can_f2, can_l2):
+                    w.bind("<Button-1>", lambda e: sub.destroy())
+                    w.bind("<Enter>",   lambda e: _btn_hover(can_f2, can_l2, SEC, S_HOV, True))
+                    w.bind("<Leave>",   lambda e: _btn_hover(can_f2, can_l2, SEC, S_HOV, False))
+
+                add_f2 = tk.Frame(foot_s, bg=PRIMARY, pady=8, padx=16)
+                add_f2.pack(side="right")
+                add_l2 = tk.Label(add_f2, text="추가", font=("Segoe UI", 10, "bold"),
+                                  bg=PRIMARY, fg="white", cursor="hand2")
+                add_l2.pack()
+                for w in (add_f2, add_l2):
+                    w.bind("<Button-1>", lambda e: _confirm())
+                    w.bind("<Enter>",   lambda e: _btn_hover(add_f2, add_l2, PRIMARY, P_HOV, True))
+                    w.bind("<Leave>",   lambda e: _btn_hover(add_f2, add_l2, PRIMARY, P_HOV, False))
+
+                dlg.wait_window(sub)
+
+            add_f = tk.Frame(btn_row, bg=PRIMARY, pady=8, padx=16)
+            add_f.pack(side="right")
+            add_l = tk.Label(add_f, text="+ 채널 추가", font=("Segoe UI", 10, "bold"),
+                             bg=PRIMARY, fg="white", cursor="hand2")
+            add_l.pack()
+            for w in (add_f, add_l):
+                w.bind("<Button-1>", lambda e: _add())
+                w.bind("<Enter>",   lambda e: _btn_hover(add_f, add_l, PRIMARY, P_HOV, True))
+                w.bind("<Leave>",   lambda e: _btn_hover(add_f, add_l, PRIMARY, P_HOV, False))
+
+            tk.Label(body, text="* 변경사항은 즉시 반영됩니다",
+                     font=("Segoe UI", 9), bg=BG, fg=SUB).pack(anchor="w", pady=(8, 0))
+
+            # Footer
+            tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x")
+            foot = tk.Frame(dlg, bg=BG, padx=24, pady=12)
+            foot.pack(fill="x")
+
+            close_f = tk.Frame(foot, bg=SEC, pady=8, padx=20)
+            close_f.pack(side="right")
+            close_l = tk.Label(close_f, text="닫기", font=("Segoe UI", 10),
+                               bg=SEC, fg=TEXT, cursor="hand2")
+            close_l.pack()
+            for w in (close_f, close_l):
+                w.bind("<Button-1>", lambda e: dlg.destroy())
+                w.bind("<Enter>",   lambda e: _btn_hover(close_f, close_l, SEC, S_HOV, True))
+                w.bind("<Leave>",   lambda e: _btn_hover(close_f, close_l, SEC, S_HOV, False))
+
+            root.mainloop()
+
+        threading.Thread(target=_dialog, daemon=True).start()
 
     def _on_restart(self, icon, item=None):
         logger.info("Tray: restart")

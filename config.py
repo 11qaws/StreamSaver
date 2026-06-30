@@ -28,7 +28,8 @@ RELAY_SERVER_URL = os.getenv("RELAY_SERVER_URL", "")
 RELAY_SECRET     = os.getenv("RELAY_SECRET", "")
 RELAY_PAIR_CODE  = os.getenv("RELAY_PAIR_CODE", "")
 
-DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
+_dl_override = os.getenv("DOWNLOAD_DIR", "")
+DOWNLOAD_DIR = _dl_override if _dl_override else os.path.join(BASE_DIR, "downloads")
 LOG_DIR      = os.path.join(BASE_DIR, "logs")
 ARCHIVE_FILE = os.path.join(BASE_DIR, "archive.txt")
 COOKIE_FILE  = os.path.join(BASE_DIR, "cookie.txt")
@@ -93,7 +94,7 @@ except ImportError:
 
 NODE_JS = shutil.which('node') or ''
 
-APP_VERSION    = "1.0.12"
+APP_VERSION    = "1.0.13"
 GITHUB_REPO    = "11qaws/StreamSaver"
 BOT_INVITE_URL = (
     "https://discord.com/oauth2/authorize"
