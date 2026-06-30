@@ -414,6 +414,50 @@ header{
 .modal-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .modal-btn.primary:hover{background:var(--accentH)}
 
+/* ── 다운로드 추가 바 ── */
+.dl-add-bar{
+  background:var(--bg2);border-bottom:1px solid var(--border);
+}
+.dl-add-bar-inner{
+  max-width:960px;margin:0 auto;padding:8px 24px;
+  display:flex;gap:8px;align-items:center
+}
+.dl-add-bar input{
+  flex:1;padding:7px 12px;border:1px solid var(--border);border-radius:8px;
+  font-size:0.875rem;background:var(--bg);color:var(--text);outline:none;
+  transition:all .15s ease
+}
+.dl-add-bar input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.dl-add-bar input::placeholder{color:var(--text4)}
+.dl-add-bar .label{font-size:0.8125rem;color:var(--text3);white-space:nowrap;flex-shrink:0}
+.btn-dl{
+  padding:7px 14px;background:var(--accent);color:#fff;border:none;
+  border-radius:8px;font-size:0.8125rem;font-weight:500;cursor:pointer;
+  transition:all .15s ease;white-space:nowrap;flex-shrink:0
+}
+.btn-dl:hover{background:var(--accentH)}
+.btn-dl:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── 토스트 알림 ── */
+#toast-stack{
+  position:fixed;bottom:24px;right:24px;z-index:200;
+  display:flex;flex-direction:column;gap:8px;align-items:flex-end;
+  pointer-events:none
+}
+.toast{
+  background:var(--bg);border:1px solid var(--border);border-radius:10px;
+  padding:12px 16px;font-size:0.875rem;color:var(--text2);
+  box-shadow:0 4px 16px var(--shadow);pointer-events:all;
+  display:flex;align-items:center;gap:10px;min-width:220px;max-width:360px;
+  animation:toastIn .2s ease
+}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)}}
+.toast.ok  .toast-dot{background:#22c55e}
+.toast.err .toast-dot{background:#ef4444}
+.toast.info .toast-dot{background:var(--accent)}
+.toast-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.toast-text{flex:1;line-height:1.4}
+
 /* ── 모드 분리 ── */
 .mode-dashboard .gh-only{display:none!important}
 .mode-github .app-only{display:none!important}
@@ -487,6 +531,18 @@ header{
   <span id="update-text">새 버전이 출시되었습니다!</span>
   <a id="update-link" href="#" target="_blank">지금 다운로드</a>
 </div>
+
+<!-- 다운로드 URL 입력 바 -->
+<div class="dl-add-bar app-only">
+  <div class="dl-add-bar-inner">
+    <span class="label">📥 URL 추가</span>
+    <input type="text" id="dl-url-input" placeholder="YouTube URL을 입력하세요...">
+    <button class="btn-dl" id="dl-add-btn">다운로드</button>
+  </div>
+</div>
+
+<!-- 토스트 알림 컨테이너 -->
+<div id="toast-stack"></div>
 
 <!-- 활성 다운로드 패널 -->
 <div class="active-panel app-only" id="active-panel">
@@ -591,7 +647,7 @@ header{
       <input type="text" id="ch-flt" placeholder="제목 필터 (선택)" style="flex:0 0 160px;min-width:0">
       <button class="btn-add" id="ch-add-btn">채널 추가</button>
     </div>
-    <div id="ch-msg" class="ch-msg"></div>
+    <div id="ch-msg" class="ch-msg" style="display:none"></div>
     <div id="ch-list" class="ch-list"></div>
   </div><!-- /tab-channels -->
 
@@ -970,11 +1026,7 @@ var chNameEl  = document.getElementById('ch-name');
 var chFltEl   = document.getElementById('ch-flt');
 var chAddBtn  = document.getElementById('ch-add-btn');
 
-function showChMsg(text,ok){
-  chMsgEl.textContent=text;
-  chMsgEl.className='ch-msg '+(ok?'ok':'err');
-  setTimeout(function(){ chMsgEl.className='ch-msg'; },3000);
-}
+// showChMsg는 아래 토스트 알림 섹션에서 정의됨
 function loadChannels(){
   fetch('/api/channels').then(function(r){ return r.json(); }).then(function(data){
     var chs=data.channels||[];
@@ -1118,6 +1170,76 @@ function checkForUpdate(){
     }).catch(function(){});
   }).catch(function(){});
 }
+
+/* ── 토스트 알림 ── */
+var toastStack = document.getElementById('toast-stack');
+function showToast(text, type){
+  var t = document.createElement('div');
+  t.className = 'toast ' + (type||'info');
+  t.innerHTML = '<div class="toast-dot"></div><div class="toast-text">'+text+'</div>';
+  toastStack.appendChild(t);
+  setTimeout(function(){
+    t.style.opacity='0';
+    t.style.transition='opacity .3s ease';
+    setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); }, 300);
+  }, 3000);
+}
+
+/* ── 다운로드 URL 입력 ── */
+var dlUrlInput = document.getElementById('dl-url-input');
+var dlAddBtn   = document.getElementById('dl-add-btn');
+
+function submitDownload(url){
+  if(!url) return;
+  dlAddBtn.disabled=true;
+  fetch('/api/download',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({url:url})
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if(d.ok){
+      showToast('다운로드가 추가되었습니다 (#'+d.id+')', 'ok');
+      dlUrlInput.value='';
+      pollStatus();
+    } else {
+      showToast(d.error||'추가 실패', 'err');
+    }
+    dlAddBtn.disabled=false;
+  }).catch(function(){
+    showToast('서버 연결 오류', 'err');
+    dlAddBtn.disabled=false;
+  });
+}
+
+dlAddBtn.addEventListener('click', function(){ submitDownload(dlUrlInput.value.trim()); });
+dlUrlInput.addEventListener('keydown', function(e){
+  if(e.key==='Enter') submitDownload(dlUrlInput.value.trim());
+});
+// 붙여넣기 시 YouTube URL 자동 인식
+dlUrlInput.addEventListener('paste', function(e){
+  setTimeout(function(){
+    var v=dlUrlInput.value.trim();
+    if(v.includes('youtube.com')||v.includes('youtu.be')){
+      dlUrlInput.style.borderColor='var(--accent)';
+      setTimeout(function(){ dlUrlInput.style.borderColor=''; }, 1500);
+    }
+  }, 0);
+});
+// 키보드 단축키: D키로 URL 입력란 포커스 (모달 닫혀있을 때)
+document.addEventListener('keydown',function(e){
+  if(e.key==='d'&&!e.ctrlKey&&!e.metaKey&&!currentModal&&document.activeElement.tagName!=='INPUT'){
+    e.preventDefault();
+    dlUrlInput.focus();
+    dlUrlInput.select();
+  }
+  if(e.key==='/'&&!currentModal&&document.activeElement.tagName!=='INPUT'){
+    e.preventDefault();
+    searchInput.focus();
+  }
+});
+
+/* ── 채널 관리 showChMsg → 토스트로 교체 ── */
+function showChMsg(text,ok){ showToast(text, ok?'ok':'err'); }
 
 /* ── 초기화 ── */
 function initLocal(){

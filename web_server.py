@@ -86,6 +86,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._cancel(data)
             elif path == "/api/channels":
                 self._channels_add(data)
+            elif path == "/api/download":
+                self._download_add(data)
             else:
                 self.send_error(404)
         except Exception as e:
@@ -157,6 +159,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "disk_free_gb": disk_free_gb,
             "disk_total_gb": disk_total_gb,
         })
+
+    def _download_add(self, data):
+        dm = _dm
+        if not dm:
+            self._json({"ok": False, "error": "다운로더를 사용할 수 없습니다"}, 503)
+            return
+        url = (data.get("url") or "").strip()
+        if not url:
+            self._json({"ok": False, "error": "URL이 필요합니다"}, 400)
+            return
+        try:
+            task = dm.enqueue(url, "dashboard")
+            self._json({"ok": True, "id": task.id})
+        except ValueError as e:
+            self._json({"ok": False, "error": str(e)}, 400)
+        except Exception as e:
+            logger.error(f"download_add error: {e}")
+            self._json({"ok": False, "error": "내부 오류가 발생했습니다"}, 500)
 
     def _cancel(self, data):
         dm = _dm
