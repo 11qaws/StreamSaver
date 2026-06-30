@@ -1,9 +1,11 @@
 # StreamSaver 설치 마법사 빌드 스크립트
-# 실행: .\build.ps1              — 클라이언트 빌드만
-# 실행: .\build.ps1 -DeployServer — 클라이언트 빌드 + 릴레이 서버 배포
+# 실행: .\build.ps1                        — 클라이언트 빌드만
+# 실행: .\build.ps1 -Release               — 빌드 + GitHub 릴리즈 업로드
+# 실행: .\build.ps1 -Release -DeployServer — 빌드 + 릴리즈 + 서버 배포
 param(
     [switch]$DeployServer,
-    [switch]$Release
+    [switch]$Release,
+    [string]$GhToken = $env:GH_TOKEN
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -13,6 +15,11 @@ $VENV    = "$ROOT\venv\Scripts"
 $ISCC    = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 $DIST    = "$ROOT\dist\StreamSaver"
 $OUTDIR  = "$PSScriptRoot\Output"
+
+# gh CLI 위치 탐색
+$GH = (Get-Command gh -ErrorAction SilentlyContinue)?.Source
+if (-not $GH) { $GH = "C:\Program Files\GitHub CLI\gh.exe" }
+if ($Release -and -not (Test-Path $GH)) { throw "gh CLI를 찾을 수 없습니다: $GH" }
 
 Write-Host "=== StreamSaver 빌드 시작 ===" -ForegroundColor Cyan
 
@@ -67,30 +74,36 @@ Write-Host "설치 파일: $($OutFile.FullName)" -ForegroundColor Green
 # ── 5. GitHub 릴리즈 업로드 (옵션) ───────────────────────────────────────────
 if ($Release) {
     Write-Host ""
-    Write-Host "[5/?] GitHub 릴리즈 업로드 중..." -ForegroundColor Yellow
+    Write-Host "[5/6] GitHub 릴리즈 업로드 중..." -ForegroundColor Yellow
 
     $version = (Select-String -Path "$PSScriptRoot\setup.iss" -Pattern '#define MyAppVersion "(.+)"').Matches[0].Groups[1].Value
     $tag     = "v$version"
     $title   = "StreamSaver $tag"
 
-    # 릴리즈 노트를 UTF-8 파일로 저장 (PowerShell 5.1 인코딩 우회)
+    # 릴리즈 노트를 UTF-8 파일로 저장 (PowerShell 5.1 기본 인코딩 CP949 우회)
     $notes = @"
-## 변경사항
+## 변경사항 (v1.0.13 ~ v1.0.14)
 
-### 내부 경로 정리
-- 앱 내부 데이터 파일(archive, cookie, history, watch_channels, .relay_guild)을 ``data/`` 하위로 통합
-- crash.txt를 ``logs/`` 하위로 이동
-- 업데이트 시 기존 파일 자동 마이그레이션
+### 트레이 기능 추가 (v1.0.13)
+- 다운로드 폴더 즉시 변경 (재시작 불필요, .env에 영구 저장)
+- 언아카이브 채널 관리 다이얼로그 (추가/삭제, 봇과 상태 동기화)
+
+### 내부 파일 경로 정리 (v1.0.14)
+- 앱 데이터 파일(archive.txt, cookie.txt, history.json, watch_channels.json, .relay_guild)을 ``%LOCALAPPDATA%\StreamSaver\data\`` 로 통합
+- crash.txt 를 ``logs\`` 로 이동
+- **업데이트 설치 시 기존 파일 자동 마이그레이션** — 재설정 불필요
 
 ## 설치 방법
 1. 아래 ``StreamSaver_Setup_v$version.exe`` 다운로드
-2. 실행 후 안내에 따라 설치
+2. 실행 중인 StreamSaver가 있으면 자동 종료 후 업데이트
+3. 설치 완료 후 자동 재시작
 "@
     $notesFile = [System.IO.Path]::GetTempFileName()
     [System.IO.File]::WriteAllText($notesFile, $notes, [System.Text.Encoding]::UTF8)
 
     try {
-        gh release create $tag $OutFile.FullName `
+        $env:GH_TOKEN = $GhToken
+        & $GH release create $tag $OutFile.FullName `
             --repo 11qaws/StreamSaver `
             --title $title `
             --notes-file $notesFile
