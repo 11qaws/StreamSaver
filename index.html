@@ -227,6 +227,73 @@ header{
 .pagination .pages button:hover{background:#f3f4f6;border-color:#d1d5db}
 .pagination .pages button.active{background:#2563eb;color:#fff;border-color:#2563eb}
 
+/* ── 탭 ── */
+.tab-strip{
+  border-bottom:2px solid #e5e7eb;margin-top:20px;display:flex;gap:0
+}
+.tab-btn{
+  padding:10px 20px;font-size:0.875rem;font-weight:500;color:#6b7280;
+  background:none;border:none;border-bottom:2px solid transparent;
+  cursor:pointer;margin-bottom:-2px;transition:all .15s ease
+}
+.tab-btn:hover{color:#374151}
+.tab-btn.active{color:#2563eb;border-bottom-color:#2563eb}
+.tab-panel{display:none}
+.tab-panel.visible{display:block}
+
+/* ── 채널 관리 탭 ── */
+.ch-add-form{
+  display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;
+  padding:20px 0 16px
+}
+.ch-add-form input{
+  flex:1;min-width:200px;padding:9px 12px;border:1px solid #e5e7eb;
+  border-radius:8px;font-size:0.875rem;background:#f9fafb;
+  outline:none;color:#111827;transition:all .15s ease
+}
+.ch-add-form input:focus{border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.ch-add-form input::placeholder{color:#9ca3af}
+.btn-add{
+  padding:9px 18px;background:#2563eb;color:#fff;border:none;
+  border-radius:8px;font-size:0.875rem;font-weight:500;cursor:pointer;
+  transition:all .15s ease;white-space:nowrap
+}
+.btn-add:hover{background:#1d4ed8}
+.btn-add:disabled{background:#93c5fd;cursor:not-allowed}
+.ch-list{border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:32px}
+.ch-row{
+  display:flex;align-items:center;gap:12px;padding:14px 16px;
+  border-bottom:1px solid #f3f4f6;transition:background .1s ease
+}
+.ch-row:last-child{border-bottom:none}
+.ch-row:hover{background:#f9fafb}
+.ch-icon{font-size:1.25rem;flex-shrink:0}
+.ch-info{flex:1;min-width:0}
+.ch-name{font-size:0.9375rem;font-weight:600;color:#111827}
+.ch-handle{font-size:0.8125rem;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-filter{font-size:0.75rem;color:#9ca3af;margin-top:2px}
+.btn-remove{
+  padding:5px 12px;background:#fff;color:#ef4444;border:1px solid #fecaca;
+  border-radius:6px;font-size:0.8125rem;cursor:pointer;transition:all .15s ease;flex-shrink:0
+}
+.btn-remove:hover{background:#fef2f2;border-color:#ef4444}
+.ch-empty{
+  text-align:center;padding:48px 24px;color:#9ca3af;
+}
+.ch-empty .emoji{font-size:2rem;margin-bottom:8px}
+.ch-msg{
+  font-size:0.8125rem;padding:8px 12px;border-radius:6px;margin-top:8px;display:none
+}
+.ch-msg.ok{background:#d1fae5;color:#065f46;display:block}
+.ch-msg.err{background:#fee2e2;color:#991b1b;display:block}
+
+/* ── 취소 버튼 ── */
+.btn-cancel-task{
+  padding:3px 10px;background:#fff;color:#6b7280;border:1px solid #e5e7eb;
+  border-radius:5px;font-size:0.75rem;cursor:pointer;transition:all .15s ease;flex-shrink:0
+}
+.btn-cancel-task:hover{background:#fee2e2;color:#ef4444;border-color:#fecaca}
+
 /* ── 모드 분리 ── */
 .mode-dashboard .gh-only{display:none!important}
 .mode-github .app-only{display:none!important}
@@ -329,6 +396,15 @@ header{
 
 <!-- 대시보드 모드 -->
 <section class="app-only">
+
+  <!-- 탭 내비게이션 -->
+  <div class="tab-strip">
+    <button class="tab-btn active" data-tab="history">📋 다운로드 기록</button>
+    <button class="tab-btn" data-tab="channels">📺 채널 관리</button>
+  </div>
+
+  <!-- 기록 탭 -->
+  <div id="tab-history" class="tab-panel visible">
   <div class="controls">
     <div class="search-wrap">
       <span class="icon">🔍</span>
@@ -373,6 +449,20 @@ header{
     <span class="info" id="page-info"></span>
     <div class="pages" id="page-buttons"></div>
   </div>
+  </div><!-- /tab-history -->
+
+  <!-- 채널 관리 탭 -->
+  <div id="tab-channels" class="tab-panel">
+    <div class="ch-add-form">
+      <input type="text" id="ch-url" placeholder="YouTube 채널 URL (예: https://www.youtube.com/@채널명)">
+      <input type="text" id="ch-name" placeholder="표시 이름 (선택)" style="flex:0 0 160px;min-width:0">
+      <input type="text" id="ch-filter" placeholder="제목 필터 (선택)" style="flex:0 0 160px;min-width:0">
+      <button class="btn-add" id="ch-add-btn">채널 추가</button>
+    </div>
+    <div id="ch-msg" class="ch-msg"></div>
+    <div id="ch-list" class="ch-list"></div>
+  </div><!-- /tab-channels -->
+
 </section>
 
 </main>
@@ -507,6 +597,7 @@ function updateActivePanel(active){
       + (meta.join(' &middot; '))
       + '</div>'
       + '<span class="task-status-badge ' + badge + '">' + statusLabel(badge) + '</span>'
+      + '<button class="btn-cancel-task" data-id="' + t.id + '">취소</button>'
       + '</div>'
       + (t.status === 'downloading' && pct > 0
           ? '<div class="progress-wrap"><div class="progress-fill" style="width:' + pct + '%"></div></div>'
@@ -530,6 +621,20 @@ function pollStatus(){
     prevActiveCount = actCount;
   }).catch(function(){});
 }
+
+/* ── 취소 버튼 (이벤트 위임) ── */
+activeTasks.addEventListener('click', function(e){
+  var btn = e.target.closest('.btn-cancel-task');
+  if(!btn) return;
+  var id = parseInt(btn.dataset.id);
+  btn.disabled = true;
+  btn.textContent = '...';
+  fetch('/api/cancel', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: id})
+  }).then(function(){ pollStatus(); }).catch(function(){ pollStatus(); });
+});
 
 /* ── 기록 로드 ── */
 function fetchHistory(){
@@ -690,6 +795,94 @@ function initLocal(){
     if(!document.hidden) fetchHistory().catch(function(){});
   }, 30000);
 }
+
+/* ── 탭 전환 ── */
+var tabBtns = document.querySelectorAll('.tab-btn');
+tabBtns.forEach(function(btn){
+  btn.addEventListener('click', function(){
+    tabBtns.forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    var target = btn.dataset.tab;
+    document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('visible'); });
+    var panel = document.getElementById('tab-' + target);
+    if(panel) panel.classList.add('visible');
+    if(target === 'channels') loadChannels();
+  });
+});
+
+/* ── 채널 관리 ── */
+var chList = document.getElementById('ch-list');
+var chMsg  = document.getElementById('ch-msg');
+var chUrlInput  = document.getElementById('ch-url');
+var chNameInput = document.getElementById('ch-name');
+var chFltInput  = document.getElementById('ch-filter');
+var chAddBtn    = document.getElementById('ch-add-btn');
+
+function showChMsg(text, ok){
+  chMsg.textContent = text;
+  chMsg.className = 'ch-msg ' + (ok ? 'ok' : 'err');
+  setTimeout(function(){ chMsg.className = 'ch-msg'; }, 3000);
+}
+
+function loadChannels(){
+  fetch('/api/channels').then(function(r){ return r.json(); }).then(function(data){
+    var chs = data.channels || [];
+    if(chs.length === 0){
+      chList.innerHTML = '<div class="ch-empty"><div class="emoji">📺</div><p>감시 중인 채널이 없습니다.</p><p style="font-size:0.8125rem;margin-top:4px">채널 URL을 입력하여 자동 감시를 시작하세요.</p></div>';
+      return;
+    }
+    var html = '';
+    chs.forEach(function(ch){
+      var handle = ch.handle || ch.url;
+      html += '<div class="ch-row">'
+        + '<div class="ch-icon">📺</div>'
+        + '<div class="ch-info">'
+        + '<div class="ch-name">' + (ch.name || handle) + '</div>'
+        + '<div class="ch-handle">' + ch.url + '</div>'
+        + (ch.title_filter ? '<div class="ch-filter">필터: ' + ch.title_filter + '</div>' : '')
+        + '</div>'
+        + '<button class="btn-remove" data-url="' + ch.url.replace(/"/g,'&quot;') + '">삭제</button>'
+        + '</div>';
+    });
+    chList.innerHTML = html;
+    Array.from(chList.querySelectorAll('.btn-remove')).forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var url = btn.dataset.url;
+        btn.disabled = true;
+        fetch('/api/channels?' + new URLSearchParams({url: url}), {method: 'DELETE'})
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            if(d.ok){ showChMsg('채널이 삭제되었습니다.', true); loadChannels(); }
+            else showChMsg('삭제 실패: ' + (d.error||''), false);
+          }).catch(function(){ showChMsg('오류가 발생했습니다.', false); btn.disabled=false; });
+      });
+    });
+  }).catch(function(){
+    chList.innerHTML = '<div class="ch-empty"><p>채널 목록을 불러올 수 없습니다.</p></div>';
+  });
+}
+
+chAddBtn.addEventListener('click', function(){
+  var url = chUrlInput.value.trim();
+  if(!url){ showChMsg('URL을 입력하세요.', false); return; }
+  chAddBtn.disabled = true;
+  fetch('/api/channels', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({url: url, name: chNameInput.value.trim(), title_filter: chFltInput.value.trim()})
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if(d.ok){
+      showChMsg((d.display || url) + ' 채널이 추가되었습니다.', true);
+      chUrlInput.value = '';
+      chNameInput.value = '';
+      chFltInput.value = '';
+      loadChannels();
+    } else {
+      showChMsg('추가 실패: ' + (d.error||''), false);
+    }
+    chAddBtn.disabled = false;
+  }).catch(function(){ showChMsg('오류가 발생했습니다.', false); chAddBtn.disabled=false; });
+});
 
 /* ── 이벤트 바인딩 ── */
 searchInput.addEventListener('input', function(){

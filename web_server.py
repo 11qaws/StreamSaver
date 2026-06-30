@@ -13,6 +13,7 @@ logger = logging.getLogger("StreamSaver.Web")
 _cache = {"history": None, "mtime": 0}
 _cm = None
 _dm = None
+_sw = None
 
 
 def set_context(cm, dm):
@@ -36,6 +37,13 @@ def _load_history():
     return _cache["history"]
 
 
+def _read_body(rfile, headers):
+    length = int(headers.get("Content-Length") or 0)
+    if length <= 0:
+        return b""
+    return rfile.read(length)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -51,10 +59,51 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._stats()
             elif path == "/api/status":
                 self._live_status()
+            elif path == "/api/channels":
+                self._channels_list()
             else:
                 self.send_error(404)
         except Exception as e:
-            logger.error(f"HTTP error: {e}")
+            logger.error(f"HTTP GET error: {e}")
+            try:
+                self.send_error(500)
+            except Exception:
+                pass
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        try:
+            body = _read_body(self.rfile, self.headers)
+            data = json.loads(body) if body else {}
+        except Exception:
+            data = {}
+
+        try:
+            if path == "/api/cancel":
+                self._cancel(data)
+            elif path == "/api/channels":
+                self._channels_add(data)
+            else:
+                self.send_error(404)
+        except Exception as e:
+            logger.error(f"HTTP POST error: {e}")
+            try:
+                self.send_error(500)
+            except Exception:
+                pass
+
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        qs = urllib.parse.parse_qs(parsed.query)
+        try:
+            if path == "/api/channels":
+                self._channels_remove(qs)
+            else:
+                self.send_error(404)
+        except Exception as e:
+            logger.error(f"HTTP DELETE error: {e}")
             try:
                 self.send_error(500)
             except Exception:
@@ -76,9 +125,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception:
             self.send_error(500)
 
-    def _json(self, data):
+    def _json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-cache")
@@ -106,6 +155,56 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "disk_free_gb": disk_free_gb,
             "disk_total_gb": disk_total_gb,
         })
+
+    def _cancel(self, data):
+        dm = _dm
+        if not dm:
+            self._json({"ok": False, "error": "not available"}, 503)
+            return
+        task_id = data.get("id")
+        if task_id is None:
+            self._json({"ok": False, "error": "id required"}, 400)
+            return
+        ok = dm.cancel(int(task_id))
+        self._json({"ok": ok})
+
+    def _channels_list(self):
+        sw = _sw
+        if not sw:
+            self._json({"channels": []})
+            return
+        channels = [
+            {"url": url, "name": info.get("name", ""), "handle": info.get("handle", ""),
+             "title_filter": info.get("title_filter", "")}
+            for url, info in sw.list_channels()
+        ]
+        self._json({"channels": channels})
+
+    def _channels_add(self, data):
+        sw = _sw
+        if not sw:
+            self._json({"ok": False, "error": "not available"}, 503)
+            return
+        url = (data.get("url") or "").strip()
+        if not url:
+            self._json({"ok": False, "error": "url required"}, 400)
+            return
+        name = (data.get("name") or "").strip()
+        title_filter = (data.get("title_filter") or "").strip()
+        display = sw.add(url, name=name, title_filter=title_filter)
+        self._json({"ok": True, "display": display})
+
+    def _channels_remove(self, qs):
+        sw = _sw
+        if not sw:
+            self._json({"ok": False, "error": "not available"}, 503)
+            return
+        url = (qs.get("url") or [""])[0].strip()
+        if not url:
+            self._json({"ok": False, "error": "url required"}, 400)
+            return
+        ok = sw.remove(url)
+        self._json({"ok": ok})
 
     def _history(self, qs):
         history = _load_history()
@@ -192,10 +291,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def start(ctx=None):
-    global _cm, _dm
+    global _cm, _dm, _sw
     if ctx:
         _cm = ctx.cm
         _dm = ctx.dm
+        _sw = getattr(ctx, "sw", None)
     server = http.server.HTTPServer(("0.0.0.0", config.WEB_PORT), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
