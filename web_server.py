@@ -68,6 +68,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._channels_list()
             elif path == "/api/version":
                 self._json({"version": config.APP_VERSION, "repo": config.GITHUB_REPO})
+            elif path == "/api/open-folder":
+                self._open_folder(qs)
             elif path == "/api/settings":
                 self._settings()
             elif path == "/api/export":
@@ -442,6 +444,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ],
             "membership_count": membership_count,
         })
+
+    def _open_folder(self, qs):
+        import subprocess
+        file_path = (qs.get("path") or [""])[0].strip()
+        if not file_path:
+            self._json({"ok": False, "error": "path required"}, 400)
+            return
+        try:
+            normed = os.path.normpath(file_path)
+            if os.path.exists(normed):
+                subprocess.Popen(
+                    ["explorer", f"/select,{normed}"],
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            else:
+                parent = os.path.dirname(normed)
+                target = parent if os.path.exists(parent) else config.DOWNLOAD_DIR
+                subprocess.Popen(
+                    ["explorer", os.path.normpath(target)],
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            self._json({"ok": True})
+        except Exception as e:
+            self._json({"ok": False, "error": str(e)}, 500)
 
     def log_message(self, fmt, *args):
         logger.debug(f"HTTP: {fmt % args}")

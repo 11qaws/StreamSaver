@@ -956,6 +956,7 @@ function pollStatus(){
     updateStatusBar(st);
     updateActivePanel(st.active||[], st.queue_list||[]);
     var actCount=st.active?st.active.length:0;
+    document.title = actCount>0 ? '('+actCount+'↓) StreamSaver' : 'StreamSaver';
     if(prevActiveCount>0&&actCount===0) fetchHistory();
     prevActiveCount=actCount;
   }).catch(function(){
@@ -1307,11 +1308,17 @@ function openModal(item){
     return '<div class="modal-row"><span class="m-key">'+r[0]+'</span><span class="m-val">'+r[1]+'</span></div>';
   }).join('');
   var ytUrl='https://www.youtube.com/watch?v='+item.id;
+  var folderBtn = item.file_path ? '<button class="modal-btn secondary" id="modal-folder-btn">📂 파일 위치 보기</button>' : '';
   modalActions.innerHTML=
     '<a class="modal-btn primary" href="'+ytUrl+'" target="_blank">▶ YouTube에서 보기</a>'
     +'<button class="modal-btn secondary" onclick="copyToClip(\''+ytUrl+'\')">🔗 URL 복사</button>'
+    +folderBtn
     +'<button class="modal-btn secondary" id="modal-redl-btn" onclick="reDownload(\''+ytUrl+'\')">⬇ 다시 다운로드</button>'
     +'<button class="modal-btn danger" id="modal-del-btn" onclick="deleteHistoryItem(\''+item.id+'\')">🗑 기록 삭제</button>';
+  if(item.file_path){
+    var fbtn = document.getElementById('modal-folder-btn');
+    if(fbtn) fbtn.addEventListener('click', function(){ openFileFolder(item.file_path); });
+  }
   modalOverlay.classList.add('open');
 }
 function closeModal(){
@@ -1335,6 +1342,11 @@ function deleteHistoryItem(videoId){
       if(d.ok){ showToast('기록에서 삭제됨','ok'); closeModal(); fetchHistory().catch(function(){}); }
       else{ showToast(d.error||'삭제 실패','err'); if(btn){ btn.disabled=false; btn.textContent='🗑 기록 삭제'; } }
     }).catch(function(){ showToast('연결 오류','err'); if(btn){ btn.disabled=false; btn.textContent='🗑 기록 삭제'; } });
+}
+function openFileFolder(fp){
+  fetch('/api/open-folder?path='+encodeURIComponent(fp))
+    .then(function(r){ return r.json(); })
+    .catch(function(){ showToast('연결 오류','err'); });
 }
 function reDownload(url){
   var btn=document.getElementById('modal-redl-btn');
