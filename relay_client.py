@@ -373,11 +373,8 @@ class RelayClient:
             except Exception:
                 pass
 
-    def _guild_file(self) -> str:
-        return os.path.join(config.BASE_DIR, ".relay_guild")
-
     def _save_guild_id(self, guild_id: str):
-        fpath = self._guild_file()
+        fpath = config.RELAY_GUILD_FILE
         tmp = fpath + ".tmp"
         try:
             with open(tmp, "w") as f:
@@ -392,7 +389,7 @@ class RelayClient:
 
     def _load_guild_id(self) -> str:
         try:
-            fpath = self._guild_file()
+            fpath = config.RELAY_GUILD_FILE
             if os.path.exists(fpath):
                 with open(fpath) as f:
                     return f.read().strip()

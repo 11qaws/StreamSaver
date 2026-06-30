@@ -18,7 +18,7 @@ class StreamWatcher:
         self._seen: set = set()     # 이미 큐에 넣은 video ID
         self._notify_cb = None
         self._task = None
-        self._file = os.path.join(config.BASE_DIR, "watch_channels.json")
+        self._file = config.WATCH_CHANNELS_FILE
         self._load()
 
     # ── 영속성 ────────────────────────────────────────────────────────────────

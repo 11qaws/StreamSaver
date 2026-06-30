@@ -528,7 +528,7 @@ class DownloadManager:
     def _sync_to_github(self):
         try:
             subprocess.run(
-                ["git", "add", "downloads/history.json"],
+                ["git", "add", "data/history.json"],
                 cwd=config.BASE_DIR, capture_output=True, timeout=10,
                 creationflags=_NW)
             r = subprocess.run(

@@ -2,7 +2,8 @@
 # 실행: .\build.ps1              — 클라이언트 빌드만
 # 실행: .\build.ps1 -DeployServer — 클라이언트 빌드 + 릴레이 서버 배포
 param(
-    [switch]$DeployServer
+    [switch]$DeployServer,
+    [switch]$Release
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -63,10 +64,47 @@ Write-Host ""
 Write-Host "=== 빌드 완료 ===" -ForegroundColor Cyan
 Write-Host "설치 파일: $($OutFile.FullName)" -ForegroundColor Green
 
-# ── 5. 릴레이 서버 배포 (옵션) ────────────────────────────────────────────────
+# ── 5. GitHub 릴리즈 업로드 (옵션) ───────────────────────────────────────────
+if ($Release) {
+    Write-Host ""
+    Write-Host "[5/?] GitHub 릴리즈 업로드 중..." -ForegroundColor Yellow
+
+    $version = (Select-String -Path "$PSScriptRoot\setup.iss" -Pattern '#define MyAppVersion "(.+)"').Matches[0].Groups[1].Value
+    $tag     = "v$version"
+    $title   = "StreamSaver $tag"
+
+    # 릴리즈 노트를 UTF-8 파일로 저장 (PowerShell 5.1 인코딩 우회)
+    $notes = @"
+## 변경사항
+
+### 내부 경로 정리
+- 앱 내부 데이터 파일(archive, cookie, history, watch_channels, .relay_guild)을 ``data/`` 하위로 통합
+- crash.txt를 ``logs/`` 하위로 이동
+- 업데이트 시 기존 파일 자동 마이그레이션
+
+## 설치 방법
+1. 아래 ``StreamSaver_Setup_v$version.exe`` 다운로드
+2. 실행 후 안내에 따라 설치
+"@
+    $notesFile = [System.IO.Path]::GetTempFileName()
+    [System.IO.File]::WriteAllText($notesFile, $notes, [System.Text.Encoding]::UTF8)
+
+    try {
+        gh release create $tag $OutFile.FullName `
+            --repo 11qaws/StreamSaver `
+            --title $title `
+            --notes-file $notesFile
+        if ($LASTEXITCODE -ne 0) { throw "gh release create 실패" }
+        Write-Host "     -> GitHub 릴리즈 업로드 완료: $tag" -ForegroundColor Green
+    } finally {
+        Remove-Item $notesFile -ErrorAction SilentlyContinue
+    }
+}
+
+# ── 6. 릴레이 서버 배포 (옵션) ────────────────────────────────────────────────
 if ($DeployServer) {
     Write-Host ""
-    Write-Host "[5/5] 릴레이 서버 배포 중..." -ForegroundColor Yellow
+    Write-Host "[6/6] 릴레이 서버 배포 중..." -ForegroundColor Yellow
     $SSH_KEY  = "$env:USERPROFILE\.ssh\oracle.key"
     $SSH_HOST = "opc@217.142.229.237"
     $SRV_PY   = "$ROOT\relay_server\server.py"

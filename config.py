@@ -31,9 +31,14 @@ RELAY_PAIR_CODE  = os.getenv("RELAY_PAIR_CODE", "")
 _dl_override = os.getenv("DOWNLOAD_DIR", "")
 DOWNLOAD_DIR = _dl_override if _dl_override else os.path.join(BASE_DIR, "downloads")
 LOG_DIR      = os.path.join(BASE_DIR, "logs")
-ARCHIVE_FILE = os.path.join(BASE_DIR, "archive.txt")
-COOKIE_FILE  = os.path.join(BASE_DIR, "cookie.txt")
-HISTORY_FILE = os.path.join(DOWNLOAD_DIR, "history.json")
+DATA_DIR     = os.path.join(BASE_DIR, "data")
+
+ARCHIVE_FILE        = os.path.join(DATA_DIR, "archive.txt")
+COOKIE_FILE         = os.path.join(DATA_DIR, "cookie.txt")
+HISTORY_FILE        = os.path.join(DATA_DIR, "history.json")
+CRASH_FILE          = os.path.join(LOG_DIR,  "crash.txt")
+RELAY_GUILD_FILE    = os.path.join(DATA_DIR, ".relay_guild")
+WATCH_CHANNELS_FILE = os.path.join(DATA_DIR, "watch_channels.json")
 INDEX_HTML   = os.path.join(_DATA_DIR, "index.html")   # PyInstaller _internal 안에 있음
 WEB_PORT     = 8080
 
@@ -94,7 +99,7 @@ except ImportError:
 
 NODE_JS = shutil.which('node') or ''
 
-APP_VERSION    = "1.0.13"
+APP_VERSION    = "1.0.14"
 GITHUB_REPO    = "11qaws/StreamSaver"
 BOT_INVITE_URL = (
     "https://discord.com/oauth2/authorize"

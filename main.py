@@ -24,7 +24,7 @@ from relay_client import RelayClient
 import updater
 
 logger = logging.getLogger("StreamSaver")
-CRASH_FILE = os.path.join(config.BASE_DIR, "crash.txt")
+CRASH_FILE = config.CRASH_FILE
 PID_FILE   = os.path.join(config.BASE_DIR, "bot.pid")
 
 
@@ -122,8 +122,29 @@ def write_crash(exc_info):
         pass
 
 
+def _migrate_files():
+    """구 버전 파일 경로 → 신 경로 자동 이동 (1회성)"""
+    import shutil
+    moves = [
+        (os.path.join(config.BASE_DIR,     "archive.txt"),         config.ARCHIVE_FILE),
+        (os.path.join(config.BASE_DIR,     "cookie.txt"),          config.COOKIE_FILE),
+        (os.path.join(config.BASE_DIR,     "watch_channels.json"), config.WATCH_CHANNELS_FILE),
+        (os.path.join(config.BASE_DIR,     ".relay_guild"),        config.RELAY_GUILD_FILE),
+        (os.path.join(config.BASE_DIR,     "crash.txt"),           config.CRASH_FILE),
+        (os.path.join(config.DOWNLOAD_DIR, "history.json"),        config.HISTORY_FILE),
+    ]
+    for old, new in moves:
+        if os.path.exists(old) and not os.path.exists(new):
+            try:
+                shutil.move(old, new)
+                logger.info("Migrated: %s → %s", os.path.basename(old), os.path.dirname(new))
+            except Exception as e:
+                logger.warning("Migration failed %s: %s", os.path.basename(old), e)
+
+
 def setup_logging():
     os.makedirs(config.LOG_DIR, exist_ok=True)
+    os.makedirs(config.DATA_DIR, exist_ok=True)
     os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
 
     fmt = logging.Formatter(
@@ -195,6 +216,7 @@ def main():
     atexit.register(ctx.cleanup)
 
     setup_logging()
+    _migrate_files()
     logger.info("StreamSaver starting (PID: %d)", os.getpid())
 
     # 다른 인스턴스 종료 → 현재 PID 기록
