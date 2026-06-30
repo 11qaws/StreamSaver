@@ -1,5 +1,9 @@
 # StreamSaver 설치 마법사 빌드 스크립트
-# 실행: .\build.ps1
+# 실행: .\build.ps1              — 클라이언트 빌드만
+# 실행: .\build.ps1 -DeployServer — 클라이언트 빌드 + 릴레이 서버 배포
+param(
+    [switch]$DeployServer
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -58,3 +62,29 @@ $OutFile = Get-ChildItem "$OUTDIR\StreamSaver_Setup_v*.exe" | Select-Object -Las
 Write-Host ""
 Write-Host "=== 빌드 완료 ===" -ForegroundColor Cyan
 Write-Host "설치 파일: $($OutFile.FullName)" -ForegroundColor Green
+
+# ── 5. 릴레이 서버 배포 (옵션) ────────────────────────────────────────────────
+if ($DeployServer) {
+    Write-Host ""
+    Write-Host "[5/5] 릴레이 서버 배포 중..." -ForegroundColor Yellow
+    $SSH_KEY  = "$env:USERPROFILE\.ssh\oracle.key"
+    $SSH_HOST = "opc@217.142.229.237"
+    $SRV_PY   = "$ROOT\relay_server\server.py"
+    $REMOTE   = "/opt/streamsaver-relay"
+
+    & scp -i $SSH_KEY -o StrictHostKeyChecking=no $SRV_PY "${SSH_HOST}:/tmp/server_new.py"
+    if ($LASTEXITCODE -ne 0) { throw "scp 실패" }
+
+    $cmd = "sudo cp /tmp/server_new.py $REMOTE/server.py && sudo systemctl restart streamsaver-relay"
+    & ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SSH_HOST $cmd
+    if ($LASTEXITCODE -ne 0) { throw "서버 재시작 실패" }
+
+    # 배포 기록 (커밋 해시 + 시각) — 버전 불일치 디버깅용
+    $hash = git -C $ROOT rev-parse HEAD
+    $ts   = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    & ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SSH_HOST `
+        "echo '$hash $ts' | sudo tee $REMOTE/deployed.txt > /dev/null"
+
+    Write-Host "     -> 서버 배포 완료 (commit: $($hash.Substring(0,8)))" -ForegroundColor Green
+    Write-Host "     -> $REMOTE/deployed.txt 에 배포 기록 저장됨" -ForegroundColor Gray
+}

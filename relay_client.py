@@ -174,6 +174,7 @@ class RelayClient:
             self._save_guild_id(self._guild_id)
             self._clear_pair_code_env()
             logger.info("Paired with guild %s", self._guild_id)
+            self._check_server_version(msg.get("server_version", ""))
             if self._on_connect_cb:
                 self._on_connect_cb(self._guild_id)
             await self._push_state()
@@ -351,6 +352,23 @@ class RelayClient:
         except Exception:
             pass
         return ""
+
+    def _check_server_version(self, server_ver: str):
+        if not server_ver:
+            return
+        def _parse(v):
+            try:
+                return tuple(int(x) for x in v.split(".")[:2])
+            except ValueError:
+                return (0, 0)
+        sv = _parse(server_ver)
+        cv = _parse(config.APP_VERSION)
+        if sv < cv:
+            msg = (f"⚠️ 릴레이 서버 버전({server_ver})이 낮습니다 "
+                   f"(클라이언트: {config.APP_VERSION}). 서버 업데이트가 필요합니다.")
+            logger.warning(msg)
+            if self._on_error_cb:
+                self._on_error_cb(msg)
 
     async def _send(self, payload: dict):
         if self._ws:

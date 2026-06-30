@@ -8,6 +8,7 @@ __pycache__/
 # Downloads & data
 downloads/
 archive.txt
+docs/
 cookie.txt
 bot.pid
 crash.txt

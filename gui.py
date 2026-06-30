@@ -106,13 +106,17 @@ def _autostart_set(enable: bool):
     if sys.platform != "win32":
         return
     import winreg
-    vbs = os.path.join(config.BASE_DIR, "run_silent.vbs")
+    # frozen(설치된 exe): exe 직접 등록 / dev: VBS로 pythonw 무음 실행
+    if getattr(sys, 'frozen', False):
+        target = f'"{sys.executable}"'
+    else:
+        vbs    = os.path.join(config.BASE_DIR, "run_silent.vbs")
+        target = f'wscript.exe "{vbs}"'
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_KEY, 0,
                             winreg.KEY_SET_VALUE) as k:
             if enable:
-                winreg.SetValueEx(k, _REG_NAME, 0, winreg.REG_SZ,
-                                  f'wscript.exe "{vbs}"')
+                winreg.SetValueEx(k, _REG_NAME, 0, winreg.REG_SZ, target)
             else:
                 try:
                     winreg.DeleteValue(k, _REG_NAME)

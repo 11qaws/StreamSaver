@@ -25,9 +25,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Relay")
 
-DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
-WS_PORT       = int(os.getenv("WS_PORT", "8765"))
-WS_SECRET     = os.getenv("WS_SECRET", "")   # 클라이언트 인증용 공유 비밀키
+DISCORD_TOKEN  = os.environ["DISCORD_TOKEN"]
+WS_PORT        = int(os.getenv("WS_PORT", "8765"))
+WS_SECRET      = os.getenv("WS_SECRET", "")   # 클라이언트 인증용 공유 비밀키
+SERVER_VERSION = "1.0.10"
 
 # ── 상태 ─────────────────────────────────────────────────────────────────────
 
@@ -136,7 +137,8 @@ async def ws_handler(ws):
                     guilds[gid] = {}
                 guilds[gid]["ws"] = ws
                 guild_id = gid
-                await ws.send(json.dumps({"type": "pair_ok", "guild_id": guild_id}))
+                await ws.send(json.dumps({"type": "pair_ok", "guild_id": guild_id,
+                                          "server_version": SERVER_VERSION}))
                 logger.info("Reconnected: guild=%s addr=%s", guild_id, addr)
                 asyncio.create_task(_channel_send(guild_id, "✅ StreamSaver PC가 재연결되었습니다."))
 
@@ -160,7 +162,8 @@ async def ws_handler(ws):
                     guilds[guild_id] = {}
                 guilds[guild_id]["ws"] = ws
 
-                await ws.send(json.dumps({"type": "pair_ok", "guild_id": guild_id}))
+                await ws.send(json.dumps({"type": "pair_ok", "guild_id": guild_id,
+                                          "server_version": SERVER_VERSION}))
                 logger.info("Paired: guild=%s addr=%s", guild_id, addr)
 
                 # 채널에 연결 알림
