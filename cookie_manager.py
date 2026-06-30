@@ -310,7 +310,7 @@ class CookieManager:
             logger.warning("[HEADLESS] CDP not ready after 15s — "
                           "port %s listening=%s",
                           port, self._port_listening(port))
-            return True
+            return False
         except Exception as e:
             logger.error("[HEADLESS] Failed to start: %s", e)
             with self._state_lock:
@@ -370,7 +370,7 @@ class CookieManager:
             logger.warning("[VISIBLE] CDP not ready after %ds "
                           "(port %d listening=%s)",
                           cdp_timeout, port, self._port_listening(port))
-            return True
+            return False
         except Exception as e:
             logger.error("[VISIBLE] Failed: %s", e)
             with self._state_lock:
@@ -514,8 +514,10 @@ class CookieManager:
             if not yt:
                 logger.info("[COOKIE] No YT cookies, saving all %d", len(cookies))
 
-            with open(config.COOKIE_FILE, "w", encoding="utf-8") as f:
+            tmp_cookie = config.COOKIE_FILE + ".tmp"
+            with open(tmp_cookie, "w", encoding="utf-8") as f:
                 f.write(self._cookies_to_netscape(target))
+            os.replace(tmp_cookie, config.COOKIE_FILE)
 
             sz = os.path.getsize(config.COOKIE_FILE)
             self.cookie_valid = sz > 200

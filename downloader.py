@@ -60,6 +60,7 @@ class DownloadManager:
         self.sem = threading.Semaphore(config.MAX_PARALLEL)
         self._lock = threading.Lock()
         self._archive_lock = threading.Lock()
+        self._history_lock = threading.Lock()
         self._counter = 0
         self._callbacks = []
         self._active_urls: set = set()   # 대기+다운로드 중인 URL 집합 (중복 방지)
@@ -452,7 +453,6 @@ class DownloadManager:
             self._cleanup_fragments(info.get("id", ""))
 
         self._record_history(task, info, is_membership, fname)
-        self._sync_to_github()
 
         channel = (info.get("channel") or info.get("uploader") or "").lower()
         for key, rule in config.UPLOAD_RULES.items():
@@ -476,14 +476,6 @@ class DownloadManager:
         return f"{size:.1f} TB"
 
     def _record_history(self, task, info, is_membership, fpath):
-        history = []
-        if os.path.exists(config.HISTORY_FILE):
-            try:
-                with open(config.HISTORY_FILE, "r", encoding="utf-8") as f:
-                    history = json.load(f)
-            except Exception:
-                history = []
-
         file_size = os.path.getsize(fpath) if fpath and os.path.exists(fpath) else 0
         channel = info.get("channel") or info.get("uploader") or "Unknown"
 
@@ -509,6 +501,7 @@ class DownloadManager:
             "duration": info.get("duration", 0),
             "thumbnail": f"https://img.youtube.com/vi/{info.get('id','')}/mqdefault.jpg",
             "filename": os.path.basename(fpath) if fpath else "",
+            "file_path": fpath or "",
             "file_size": file_size,
             "file_size_str": self._format_size(file_size),
             "downloaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -518,37 +511,26 @@ class DownloadManager:
             "state": task.state,
         }
 
-        history.insert(0, entry)
-        try:
-            with open(config.HISTORY_FILE, "w", encoding="utf-8") as f:
-                json.dump(history, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"History write error: {e}")
-
-    def _sync_to_github(self):
-        try:
-            subprocess.run(
-                ["git", "add", "data/history.json"],
-                cwd=config.BASE_DIR, capture_output=True, timeout=10,
-                creationflags=_NW)
-            r = subprocess.run(
-                ["git", "diff", "--cached", "--quiet"],
-                cwd=config.BASE_DIR, capture_output=True, timeout=10,
-                creationflags=_NW)
-            if r.returncode != 0:
-                subprocess.run(
-                    ["git", "commit", "-m", "Update download history"],
-                    cwd=config.BASE_DIR, capture_output=True, timeout=10,
-                    creationflags=_NW)
-                subprocess.run(
-                    ["git", "push"],
-                    cwd=config.BASE_DIR, capture_output=True, timeout=30,
-                    creationflags=_NW)
-                logger.info("History synced to GitHub")
-            else:
-                logger.debug("No history changes to sync")
-        except Exception as e:
-            logger.warning(f"GitHub sync failed: {e}")
+        with self._history_lock:
+            history = []
+            if os.path.exists(config.HISTORY_FILE):
+                try:
+                    with open(config.HISTORY_FILE, "r", encoding="utf-8") as f:
+                        history = json.load(f)
+                except Exception:
+                    history = []
+            history.insert(0, entry)
+            tmp = config.HISTORY_FILE + ".tmp"
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(history, f, indent=2, ensure_ascii=False)
+                os.replace(tmp, config.HISTORY_FILE)
+            except Exception as e:
+                logger.error("History write error: %s", e)
+                try:
+                    os.remove(tmp)
+                except Exception:
+                    pass
 
     def _get_output_filename(self, task, info, is_membership, use_cookies):
         template = self.output_template(info, is_membership)
@@ -579,7 +561,7 @@ class DownloadManager:
     def cancel(self, task_id):
         with self._lock:
             for t in self.active:
-                if t.id == task_id and t.status == TaskStatus.DOWNLOADING:
+                if t.id == task_id:
                     t.cancelled = True
                     return True
         new_queue = Queue()

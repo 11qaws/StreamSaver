@@ -37,10 +37,15 @@ def _load_history():
     return _cache["history"]
 
 
+_MAX_BODY = 1 * 1024 * 1024  # 1 MB
+
+
 def _read_body(rfile, headers):
     length = int(headers.get("Content-Length") or 0)
     if length <= 0:
         return b""
+    if length > _MAX_BODY:
+        raise ValueError(f"Request body too large ({length} bytes)")
     return rfile.read(length)
 
 
@@ -251,7 +256,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"ok": False, "error": str(e)}, 500)
             return
-        kept = [e for e in history if not e.get("file_path") or os.path.exists(e["file_path"])]
+        def _file_exists(e):
+            fp = e.get("file_path", "")
+            if fp:
+                return os.path.exists(fp)
+            fname = e.get("filename", "")
+            if fname:
+                return os.path.exists(os.path.join(config.DOWNLOAD_DIR, fname))
+            return True  # no path info → keep
+
+        kept = [e for e in history if _file_exists(e)]
         removed = len(history) - len(kept)
         if removed > 0:
             tmp = path + ".tmp"
@@ -304,7 +318,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if task_id is None:
             self._json({"ok": False, "error": "id required"}, 400)
             return
-        ok = dm.cancel(int(task_id))
+        try:
+            ok = dm.cancel(int(task_id))
+        except (ValueError, TypeError):
+            self._json({"ok": False, "error": "id must be an integer"}, 400)
+            return
         self._json({"ok": ok})
 
     def _channels_list(self):
@@ -377,8 +395,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif sort == "smallest":
             filtered = list(sorted(filtered, key=lambda x: x.get("file_size", 0)))
 
-        page = int((qs.get("page") or ["1"])[0])
-        per_page = int((qs.get("per_page") or ["20"])[0])
+        page = max(1, int((qs.get("page") or ["1"])[0]))
+        per_page = max(1, min(100, int((qs.get("per_page") or ["20"])[0])))
         total = len(filtered)
         start = (page - 1) * per_page
         end = start + per_page
@@ -435,7 +453,7 @@ def start(ctx=None):
         _cm = ctx.cm
         _dm = ctx.dm
         _sw = getattr(ctx, "sw", None)
-    server = http.server.HTTPServer(("0.0.0.0", config.WEB_PORT), Handler)
+    server = http.server.HTTPServer(("127.0.0.1", config.WEB_PORT), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     logger.info(f"Web server → http://localhost:{config.WEB_PORT}")

@@ -144,8 +144,9 @@ class GUIManager:
         self._failed          = 0
         self._mode            = "relay" if config.RELAY_SERVER_URL else "local"
         self._update_info     = None   # {"version": ..., "url": ...} or None
-        self._update_progress = None   # None=대기, int=다운로드 진행률(0~100)
-        self._web_ok          = True   # 웹서버 정상 기동 여부
+        self._update_progress  = None   # None=대기, int=다운로드 진행률(0~100)
+        self._web_ok           = True   # 웹서버 정상 기동 여부
+        self._unarchived_open  = False  # 관리 창 중복 열기 방지
         self._anim_stop       = threading.Event()
         self._anim_stop.set()          # 초기값: 정지 상태
         self._anim_thread     = None
@@ -740,11 +741,17 @@ class GUIManager:
         threading.Thread(target=_dialog, daemon=True).start()
 
     def _manage_unarchived(self, icon=None, item=None):
+        if self._unarchived_open:
+            return
+        self._unarchived_open = True
+
         def _dialog():
             try:
                 _dialog_body()
             except Exception as e:
                 logger.error("_manage_unarchived dialog error: %s", e, exc_info=True)
+            finally:
+                self._unarchived_open = False
 
         def _dialog_body():
             import tkinter as tk
