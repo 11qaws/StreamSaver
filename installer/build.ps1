@@ -74,7 +74,7 @@ if ($Release) {
     $version = (Select-String -Path "$PSScriptRoot\setup.iss" -Pattern '#define MyAppVersion "(.+)"').Matches[0].Groups[1].Value
     $tag   = "v$version"
     $title = "StreamSaver $tag"
-    $notes = "## 변경사항`n`n### 트레이 기능 추가 (v1.0.13)`n- 다운로드 폴더 즉시 변경 (재시작 불필요, .env에 영구 저장)`n- 언아카이브 채널 관리 다이얼로그 (추가/삭제, 봇과 상태 동기화)`n`n### 내부 파일 경로 정리 (v1.0.14)`n- 앱 데이터 파일(archive.txt, cookie.txt, history.json, watch_channels.json, .relay_guild)을 ``%LOCALAPPDATA%\StreamSaver\data\`` 로 통합`n- crash.txt 를 ``logs\`` 로 이동`n- **업데이트 설치 시 기존 파일 자동 마이그레이션** — 재설정 불필요`n`n## 설치 방법`n1. 아래 ``StreamSaver_Setup_v$version.exe`` 다운로드`n2. 실행 중인 StreamSaver가 있으면 자동 종료 후 업데이트`n3. 설치 완료 후 자동 재시작"
+    $notes = "## 변경사항`n`n### 버그 수정 (v1.0.15)`n- Unarchived 관리 창이 두 번째 열기부터 뜨지 않던 문제 수정 (tkinter root 생명주기 오류)`n- 서버 연결 다이얼로그 동일 패턴 예방적 수정`n- 다이얼로그 오류 시 로그에 기록되도록 예외 처리 추가`n`n## 설치 방법`n1. 아래 ``StreamSaver_Setup_v$version.exe`` 다운로드`n2. 실행 중인 StreamSaver가 있으면 자동 종료 후 업데이트`n3. 설치 완료 후 자동 재시작"
 
     $headers = @{
         Authorization = "token $GhToken"
