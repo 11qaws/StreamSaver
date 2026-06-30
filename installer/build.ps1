@@ -2,6 +2,7 @@
 # Usage: .\build.ps1                        - client build only
 #        .\build.ps1 -Release               - build + GitHub release upload
 #        .\build.ps1 -Release -DeployServer - build + release + server deploy
+# Release notes are read from release_notes.txt (UTF-8) to keep this script ASCII-safe
 param(
     [switch]$DeployServer,
     [switch]$Release,
@@ -71,25 +72,32 @@ if ($Release) {
     Write-Host ""
     Write-Host "[5/6] GitHub release upload..." -ForegroundColor Yellow
 
+    if (-not $GhToken) { throw "GhToken is required for release upload" }
+
     $version = (Select-String -Path "$PSScriptRoot\setup.iss" -Pattern '#define MyAppVersion "(.+)"').Matches[0].Groups[1].Value
     $tag   = "v$version"
     $title = "StreamSaver $tag"
-    $notes = "## 변경사항`n`n### 버그 수정 (v1.0.15)`n- Unarchived 관리 창이 두 번째 열기부터 뜨지 않던 문제 수정 (tkinter root 생명주기 오류)`n- 서버 연결 다이얼로그 동일 패턴 예방적 수정`n- 다이얼로그 오류 시 로그에 기록되도록 예외 처리 추가`n`n## 설치 방법`n1. 아래 ``StreamSaver_Setup_v$version.exe`` 다운로드`n2. 실행 중인 StreamSaver가 있으면 자동 종료 후 업데이트`n3. 설치 완료 후 자동 재시작"
+
+    # Read release notes from UTF-8 file to avoid PS5.1 CP949 encoding issues
+    $notesFile = "$PSScriptRoot\release_notes.txt"
+    if (-not (Test-Path $notesFile)) { throw "release_notes.txt not found: $notesFile" }
+    $notes = [System.IO.File]::ReadAllText($notesFile, [System.Text.Encoding]::UTF8)
 
     $headers = @{
         Authorization = "token $GhToken"
         Accept        = "application/vnd.github+json"
     }
-    $body = @{ tag_name = $tag; name = $title; body = $notes } | ConvertTo-Json
+    $bodyObj  = @{ tag_name = $tag; name = $title; body = $notes }
+    $bodyJson = [System.Text.Encoding]::UTF8.GetBytes(($bodyObj | ConvertTo-Json))
 
-    # 1) 릴리즈 생성
+    # 1) Create release
     $release = Invoke-RestMethod `
         -Uri "https://api.github.com/repos/11qaws/StreamSaver/releases" `
         -Method Post -Headers $headers `
-        -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) `
+        -Body $bodyJson `
         -ContentType "application/json; charset=utf-8"
 
-    # 2) 인스톨러 업로드
+    # 2) Upload installer asset
     $uploadUrl = "https://uploads.github.com/repos/11qaws/StreamSaver/releases/$($release.id)/assets?name=$($OutFile.Name)"
     $fileBytes  = [System.IO.File]::ReadAllBytes($OutFile.FullName)
     Invoke-RestMethod `
@@ -120,5 +128,4 @@ if ($DeployServer) {
     & ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SSH_HOST "echo '$hash $ts' | sudo tee $REMOTE/deployed.txt > /dev/null"
 
     Write-Host "     -> Deployed (commit: $($hash.Substring(0,8)))" -ForegroundColor Green
-    Write-Host "     -> $REMOTE/deployed.txt updated" -ForegroundColor Gray
 }
