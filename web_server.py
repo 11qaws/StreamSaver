@@ -4,6 +4,7 @@ import logging
 import http.server
 import threading
 import urllib.parse
+import shutil
 
 import config
 
@@ -89,12 +90,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         dm = _dm
         cs = cm.get_status() if cm else {}
         ds = dm.status() if dm else {}
+        try:
+            du = shutil.disk_usage(config.DOWNLOAD_DIR)
+            disk_free_gb = round(du.free / (1024 ** 3), 1)
+            disk_total_gb = round(du.total / (1024 ** 3), 1)
+        except Exception:
+            disk_free_gb = 0
+            disk_total_gb = 0
         self._json({
             "cookie_valid": cs.get("cookie_valid", False),
             "cookie_file": cs.get("cookie_file", False),
             "edge_running": cs.get("edge_running", False),
             "active": ds.get("active", []),
             "queued": ds.get("queued", 0),
+            "disk_free_gb": disk_free_gb,
+            "disk_total_gb": disk_total_gb,
         })
 
     def _history(self, qs):

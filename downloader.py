@@ -623,6 +623,7 @@ class DownloadManager:
                     {
                         "id":         t.id,
                         "url":        t.url,
+                        "title":      t.info.get("title", "") if t.info else "",
                         "progress":   t.progress,
                         "speed":      t.speed,
                         "eta":        t.eta,

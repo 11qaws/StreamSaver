@@ -6,7 +6,7 @@
 <title>StreamSaver</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{font-size:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+html{font-size:16px;-webkit-font-smoothing:antialiased}
 body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans KR",sans-serif;
   background:#ffffff;color:#111827;line-height:1.6
@@ -17,10 +17,10 @@ img{max-width:100%;display:block}
 
 .container{max-width:960px;margin:0 auto;padding:0 24px}
 
-/* Header */
+/* ── 헤더 ── */
 header{
   border-bottom:1px solid #e5e7eb;
-  background:#ffffff;position:sticky;top:0;z-index:10
+  background:#ffffff;position:sticky;top:0;z-index:20
 }
 .header-inner{
   max-width:960px;margin:0 auto;padding:16px 24px;
@@ -35,7 +35,67 @@ header{
 .stats-row .num{font-weight:600;color:#111827}
 .stat-divider{width:1px;height:16px;background:#e5e7eb}
 
-/* Hero (GH Pages mode) */
+/* ── 상태 표시줄 ── */
+.status-bar{
+  background:#f9fafb;border-bottom:1px solid #e5e7eb;
+  position:sticky;top:57px;z-index:19;
+  font-size:0.8125rem
+}
+.status-bar-inner{
+  max-width:960px;margin:0 auto;padding:8px 24px;
+  display:flex;align-items:center;gap:20px;flex-wrap:wrap
+}
+.status-item{display:flex;align-items:center;gap:6px;color:#6b7280}
+.status-item .label{color:#9ca3af}
+.status-item .val{font-weight:500;color:#374151}
+.dot{
+  width:8px;height:8px;border-radius:50%;flex-shrink:0
+}
+.dot-green{background:#22c55e}
+.dot-red{background:#ef4444}
+.dot-gray{background:#d1d5db}
+.dot-blue{background:#3b82f6}
+.status-divider{width:1px;height:14px;background:#e5e7eb}
+.status-ts{margin-left:auto;color:#d1d5db;font-size:0.75rem}
+
+/* ── 활성 다운로드 패널 ── */
+.active-panel{
+  background:#eff6ff;border-bottom:1px solid #bfdbfe;
+  display:none
+}
+.active-panel.visible{display:block}
+.active-panel-inner{
+  max-width:960px;margin:0 auto;padding:12px 24px
+}
+.active-panel-title{
+  font-size:0.8125rem;font-weight:600;color:#1d4ed8;margin-bottom:8px;
+  display:flex;align-items:center;gap:6px
+}
+.active-tasks{display:flex;flex-direction:column;gap:8px}
+.task-row{
+  background:#fff;border:1px solid #dbeafe;border-radius:8px;
+  padding:10px 14px;display:flex;flex-direction:column;gap:4px
+}
+.task-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.task-title{
+  font-size:0.875rem;font-weight:500;color:#1e40af;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  flex:1;min-width:0
+}
+.task-meta{display:flex;gap:10px;font-size:0.75rem;color:#6b7280;flex-shrink:0}
+.task-status-badge{
+  font-size:0.6875rem;font-weight:600;padding:1px 6px;border-radius:4px;
+  background:#dbeafe;color:#1d4ed8
+}
+.task-status-badge.getting_info{background:#fef9c3;color:#854d0e}
+.progress-wrap{position:relative;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden}
+.progress-fill{
+  height:100%;background:#3b82f6;border-radius:2px;
+  transition:width .5s ease
+}
+.task-pct{font-size:0.75rem;color:#6b7280;text-align:right}
+
+/* ── GH Pages 히어로 ── */
 .hero{padding:80px 24px 60px;text-align:center}
 .hero h2{font-size:2rem;font-weight:700;letter-spacing:-0.03em;margin-bottom:16px}
 .hero h2 span{color:#2563eb}
@@ -50,25 +110,22 @@ header{
 .btn-primary:hover{background:#1d4ed8;text-decoration:none}
 .btn-secondary{background:#f3f4f6;color:#374151}
 .btn-secondary:hover{background:#e5e7eb;text-decoration:none}
-.btn-outline{
-  background:transparent;color:#6b7280;border:1px solid #e5e7eb
-}
-.btn-outline:hover{background:#f9fafb;border-color:#d1d5db;text-decoration:none}
-
 .hero-features{
   display:flex;gap:32px;justify-content:center;flex-wrap:wrap;
   margin-top:40px;font-size:0.875rem;color:#6b7280
 }
 .hero-features div{display:flex;align-items:center;gap:6px}
+.gh-footer{
+  text-align:center;padding:32px 24px 48px;
+  border-top:1px solid #e5e7eb;color:#9ca3af;font-size:0.8125rem
+}
 
-/* Controls */
+/* ── 컨트롤 ── */
 .controls{
   display:flex;gap:12px;align-items:center;flex-wrap:wrap;
   padding:20px 0 16px
 }
-.controls .search-wrap{
-  flex:1;min-width:200px;position:relative
-}
+.controls .search-wrap{flex:1;min-width:200px;position:relative}
 .controls .search-wrap input{
   width:100%;padding:9px 12px 9px 36px;border:1px solid #e5e7eb;
   border-radius:8px;font-size:0.875rem;background:#f9fafb;
@@ -81,10 +138,10 @@ header{
   position:absolute;left:12px;top:50%;transform:translateY(-50%);
   color:#9ca3af;font-size:0.875rem;pointer-events:none
 }
-.controls select,.controls .filter-btn{
+.controls select{
   padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;
   font-size:0.8125rem;background:#f9fafb;color:#374151;
-  outline:none;cursor:pointer;transition:all .15s ease;appearance:none
+  outline:none;cursor:pointer;transition:all .15s ease
 }
 .controls select:focus{border-color:#2563eb}
 .controls label{
@@ -97,17 +154,17 @@ header{
 .controls label input[type=checkbox]{width:16px;height:16px;accent-color:#2563eb}
 .controls label.active{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
 
-/* Info bar */
+/* ── 정보 바 ── */
 .info-bar{
   display:flex;justify-content:space-between;align-items:center;
   padding:8px 0;font-size:0.8125rem;color:#9ca3af;border-top:1px solid #f3f4f6
 }
 
-/* Cards */
+/* ── 카드 ── */
 .cards{padding:0 0 32px}
 .card{
   display:flex;gap:16px;padding:16px;margin-bottom:8px;
-  border-radius:12px;transition:all .15s ease;cursor:default
+  border-radius:12px;transition:all .15s ease;cursor:pointer
 }
 .card:hover{background:#f9fafb}
 .card-thumb{
@@ -130,7 +187,7 @@ header{
   font-size:0.8125rem;color:#6b7280;margin-bottom:4px
 }
 .card-meta .channel{font-weight:500;color:#374151}
-.card-meta .dot{width:3px;height:3px;border-radius:50%;background:#d1d5db}
+.card-meta .mdot{width:3px;height:3px;border-radius:50%;background:#d1d5db}
 .card-badges{display:flex;gap:6px;margin-top:6px}
 .badge{
   display:inline-flex;align-items:center;gap:4px;
@@ -140,21 +197,12 @@ header{
 .badge-membership{background:#fef3c7;color:#92400e}
 .badge-gdrive{background:#d1fae5;color:#065f46}
 
-/* Empty state */
-.empty{
-  text-align:center;padding:80px 24px;color:#9ca3af
-}
-.empty .emoji{font-size:2.5rem;margin-bottom:12px}
-.empty p{font-size:0.9375rem}
+/* ── 빈 상태 / 오류 ── */
+.empty,.error-state{text-align:center;padding:80px 24px;color:#9ca3af}
+.empty .emoji,.error-state .emoji{font-size:2.5rem;margin-bottom:12px}
+.empty p,.error-state p{font-size:0.9375rem}
 
-/* Error state */
-.error-state{
-  text-align:center;padding:80px 24px
-}
-.error-state .emoji{font-size:2.5rem;margin-bottom:12px}
-.error-state p{font-size:0.9375rem;color:#6b7280}
-
-/* Loading */
+/* ── 로딩 ── */
 .loading{text-align:center;padding:80px 24px}
 .spinner{
   width:24px;height:24px;border:3px solid #e5e7eb;
@@ -164,7 +212,7 @@ header{
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading p{font-size:0.875rem;color:#9ca3af}
 
-/* Pagination */
+/* ── 페이지네이션 ── */
 .pagination{
   display:flex;align-items:center;justify-content:space-between;
   padding:16px 0 32px;font-size:0.8125rem
@@ -178,21 +226,15 @@ header{
 }
 .pagination .pages button:hover{background:#f3f4f6;border-color:#d1d5db}
 .pagination .pages button.active{background:#2563eb;color:#fff;border-color:#2563eb}
-.pagination .pages button:disabled{opacity:.3;cursor:default}
 
-/* Footer (GH Pages) */
-.gh-footer{
-  text-align:center;padding:32px 24px 48px;
-  border-top:1px solid #e5e7eb;color:#9ca3af;font-size:0.8125rem
-}
-
-/* Dashboard mode toggle */
+/* ── 모드 분리 ── */
 .mode-dashboard .gh-only{display:none!important}
 .mode-github .app-only{display:none!important}
 
-/* Responsive */
+/* ── 반응형 ── */
 @media(max-width:640px){
   .header-inner{flex-direction:column;gap:8px;align-items:flex-start}
+  .status-bar-inner{gap:12px}
   .controls .search-wrap{min-width:100%}
   .card{flex-direction:column}
   .card-thumb{width:100%;height:auto;aspect-ratio:16/9}
@@ -206,79 +248,123 @@ header{
   <div class="header-inner">
     <h1>Stream<span>Saver</span></h1>
     <div class="stats-row" id="stats-row">
-      <span>📁 <span class="num" id="stat-files">-</span> files</span>
+      <span>📁 <span class="num" id="stat-files">-</span>개 파일</span>
       <span class="stat-divider"></span>
       <span>💾 <span class="num" id="stat-size">-</span></span>
       <span class="stat-divider"></span>
-      <span>📺 <span class="num" id="stat-channels">-</span> channels</span>
+      <span>📺 <span class="num" id="stat-channels">-</span>개 채널</span>
     </div>
   </div>
 </header>
 
+<!-- 상태 표시줄 (대시보드 전용) -->
+<div class="status-bar app-only" id="status-bar">
+  <div class="status-bar-inner">
+    <div class="status-item">
+      <div class="dot dot-gray" id="dot-bot"></div>
+      <span class="label">봇</span>
+      <span class="val" id="val-bot">확인 중</span>
+    </div>
+    <div class="status-divider"></div>
+    <div class="status-item">
+      <div class="dot dot-gray" id="dot-cookie"></div>
+      <span class="label">쿠키</span>
+      <span class="val" id="val-cookie">확인 중</span>
+    </div>
+    <div class="status-divider"></div>
+    <div class="status-item">
+      <span class="label">디스크 여유</span>
+      <span class="val" id="val-disk">-</span>
+    </div>
+    <div class="status-divider"></div>
+    <div class="status-item">
+      <div class="dot dot-gray" id="dot-active"></div>
+      <span class="label">다운로드 중</span>
+      <span class="val" id="val-active">-</span>
+    </div>
+    <div class="status-divider"></div>
+    <div class="status-item">
+      <span class="label">대기</span>
+      <span class="val" id="val-queued">-</span>
+    </div>
+    <span class="status-ts" id="status-ts"></span>
+  </div>
+</div>
+
+<!-- 활성 다운로드 패널 (대시보드 전용) -->
+<div class="active-panel app-only" id="active-panel">
+  <div class="active-panel-inner">
+    <div class="active-panel-title">
+      <div class="dot dot-blue"></div>
+      다운로드 진행 중
+    </div>
+    <div class="active-tasks" id="active-tasks"></div>
+  </div>
+</div>
+
 <main class="container">
 
-<!-- GitHub Pages Mode -->
+<!-- GitHub Pages 모드 -->
 <section class="gh-only">
   <div class="hero">
     <h2>Stream<span>Saver</span></h2>
-    <p>Automatically download YouTube membership streams via Discord bot, with web dashboard and Google Drive integration.</p>
+    <p>Discord 봇을 통해 YouTube 멤버십 방송을 자동으로 다운로드하고 Google Drive에 업로드합니다.</p>
     <div class="hero-actions">
-      <a class="btn btn-primary" href="https://github.com/anomalyco/StreamSaver">View on GitHub</a>
-      <a class="btn btn-secondary" href="https://github.com/anomalyco/StreamSaver/issues">Report Issue</a>
+      <a class="btn btn-primary" id="gh-link" href="#">GitHub에서 보기</a>
+      <a class="btn btn-secondary" id="issue-link" href="#">문제 신고</a>
     </div>
     <div class="hero-features">
-      <div>📥 &nbsp;Auto download</div>
-      <div>🔒 &nbsp;Membership support</div>
-      <div>☁️ &nbsp;Google Drive upload</div>
-      <div>🎨 &nbsp;Web dashboard</div>
+      <div>📥 자동 다운로드</div>
+      <div>🔒 멤버십 지원</div>
+      <div>☁️ Google Drive 업로드</div>
+      <div>🎨 웹 대시보드</div>
     </div>
     <p style="margin-top:48px;font-size:0.8125rem;color:#9ca3af">
-      💡 To view your download history, start the bot and visit<br>
-      <code style="background:#f3f4f6;padding:3px 8px;border-radius:4px">http://localhost:8080</code>
+      💡 다운로드 기록을 보려면 봇을 실행하고<br>
+      <code style="background:#f3f4f6;padding:3px 8px;border-radius:4px">http://localhost:8080</code>에 접속하세요
     </p>
   </div>
-  <div class="gh-footer">
-    StreamSaver &middot; MIT License
-  </div>
+  <div class="gh-footer">StreamSaver &middot; MIT License</div>
 </section>
 
-<!-- Dashboard Mode -->
+<!-- 대시보드 모드 -->
 <section class="app-only">
   <div class="controls">
     <div class="search-wrap">
       <span class="icon">🔍</span>
-      <input type="text" id="search" placeholder="Search by title or channel...">
+      <input type="text" id="search" placeholder="제목 또는 채널로 검색...">
     </div>
-    <select id="channel-filter"><option value="">All channels</option></select>
+    <select id="channel-filter"><option value="">전체 채널</option></select>
     <select id="sort">
-      <option value="newest">Latest</option>
-      <option value="oldest">Oldest</option>
-      <option value="largest">Largest</option>
-      <option value="smallest">Smallest</option>
+      <option value="newest">최신순</option>
+      <option value="oldest">오래된 순</option>
+      <option value="largest">큰 파일순</option>
+      <option value="smallest">작은 파일순</option>
     </select>
     <label id="membership-label">
-      <input type="checkbox" id="membership-filter"> Members only
+      <input type="checkbox" id="membership-filter"> 멤버십만
     </label>
   </div>
 
   <div class="info-bar">
     <span id="result-info"></span>
+    <span id="last-update" style="font-size:0.75rem;color:#d1d5db"></span>
   </div>
 
   <div id="loading" class="loading">
     <div class="spinner"></div>
-    <p>Loading history...</p>
+    <p>기록 불러오는 중...</p>
   </div>
 
   <div id="error-state" class="error-state" style="display:none">
     <div class="emoji">😕</div>
-    <p>Could not connect to StreamSaver web server.</p>
-    <p style="margin-top:8px;font-size:0.8125rem">Make sure the bot is running and refresh the page.</p>
+    <p>StreamSaver 웹 서버에 연결할 수 없습니다.</p>
+    <p style="margin-top:8px;font-size:0.8125rem">봇이 실행 중인지 확인하고 페이지를 새로고침하세요.</p>
   </div>
 
   <div id="empty-state" class="empty" style="display:none">
     <div class="emoji">📭</div>
-    <p>No downloads yet.</p>
+    <p>아직 다운로드 기록이 없습니다.</p>
   </div>
 
   <div id="cards" class="cards" style="display:none"></div>
@@ -293,89 +379,249 @@ header{
 
 <script>
 (function(){
-const isLocal = window.location.port === '8080' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const GITHUB_USER = '11qaws';
-const GITHUB_REPO = 'StreamSaver';
-const RAW_URL = 'https://raw.githubusercontent.com/' + GITHUB_USER + '/' + GITHUB_REPO + '/main/downloads/history.json';
+'use strict';
+
+var isLocal = window.location.port === '8080'
+           || window.location.hostname === 'localhost'
+           || window.location.hostname === '127.0.0.1';
+var GITHUB_USER = '11qaws';
+var GITHUB_REPO = 'StreamSaver';
+var RAW_URL = 'https://raw.githubusercontent.com/' + GITHUB_USER + '/' + GITHUB_REPO + '/main/data/history.json';
 
 if(!isLocal){
   document.body.className = 'mode-github';
-  document.querySelector('.gh-only .btn-primary').href = 'https://github.com/' + GITHUB_USER + '/' + GITHUB_REPO;
-  document.querySelector('.gh-only .btn-secondary').href = 'https://github.com/' + GITHUB_USER + '/' + GITHUB_REPO + '/issues';
-}
-if(!isLocal && !window.location.hostname.includes('github.io') && !window.location.hostname.includes('localhost')){
+  document.getElementById('gh-link').href = 'https://github.com/' + GITHUB_USER + '/' + GITHUB_REPO;
+  document.getElementById('issue-link').href = 'https://github.com/' + GITHUB_USER + '/' + GITHUB_REPO + '/issues';
+  initRaw();
   return;
 }
 
 document.body.className = 'mode-dashboard';
 
-const $ = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
+var $ = function(s){ return document.querySelector(s); };
 
-const searchInput = $('#search');
-const channelFilter = $('#channel-filter');
-const sortSelect = $('#sort');
-const membershipCheck = $('#membership-filter');
-const cards = $('#cards');
-const loading = $('#loading');
-const emptyState = $('#empty-state');
-const errorState = $('#error-state');
-const pagination = $('#pagination');
-const pageInfo = $('#page-info');
-const pageButtons = $('#page-buttons');
-const resultInfo = $('#result-info');
+var searchInput = $('#search');
+var channelFilter = $('#channel-filter');
+var sortSelect = $('#sort');
+var membershipCheck = $('#membership-filter');
+var cardsEl = $('#cards');
+var loadingEl = $('#loading');
+var emptyState = $('#empty-state');
+var errorState = $('#error-state');
+var paginationEl = $('#pagination');
+var pageInfo = $('#page-info');
+var pageButtons = $('#page-buttons');
+var resultInfo = $('#result-info');
+var lastUpdate = $('#last-update');
+var activePanel = $('#active-panel');
+var activeTasks = $('#active-tasks');
+var membershipLabel = $('#membership-label');
 
-let allData = [];
-let currentPage = 1;
-const PER_PAGE = 20;
-let timer = null;
+var allData = [];
+var currentPage = 1;
+var PER_PAGE = 20;
+var filterTimer = null;
+var prevActiveCount = 0;
 
+/* ── 유틸 ── */
 function fmtSize(bytes){
   if(!bytes) return '0 B';
-  const units = ['B','KB','MB','GB'];
-  let s = bytes;
-  for(const u of units){
-    if(s < 1024) return s.toFixed(1) + ' ' + u;
+  var units = ['B','KB','MB','GB','TB'];
+  var s = bytes;
+  for(var i = 0; i < units.length - 1; i++){
+    if(s < 1024) return s.toFixed(1) + ' ' + units[i];
     s /= 1024;
   }
   return s.toFixed(1) + ' TB';
 }
-
 function fmtDate(d){
   if(!d || d.length < 8) return '';
-  const y = d.slice(0,4), m = d.slice(4,6), day = d.slice(6,8);
-  return y + '.' + m + '.' + day;
+  return d.slice(0,4) + '.' + d.slice(4,6) + '.' + d.slice(6,8);
 }
-
 function fmtDur(sec){
   if(!sec) return '';
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  if(h) return h + 'h ' + m + 'm';
-  return m + 'm';
+  var h = Math.floor(sec / 3600);
+  var m = Math.floor((sec % 3600) / 60);
+  return h ? h + '시간 ' + m + '분' : m + '분';
+}
+function nowTime(){
+  var d = new Date();
+  return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2);
 }
 
-function renderCard(item){
-  const thumb = item.thumbnail || 'https://img.youtube.com/vi/' + item.id + '/mqdefault.jpg';
-  const duration = fmtDur(item.duration);
-  const date = fmtDate(item.upload_date);
-  const size = item.file_size_str || fmtSize(item.file_size);
-  var badges = '';
-  if(item.is_membership) badges += '<span class="badge badge-membership">🔒 MEMBERSHIP</span>';
-  if(item.upload_to) badges += '<span class="badge badge-gdrive">☁️ GDrive</span>';
+/* ── 상태 표시줄 업데이트 ── */
+function setDot(id, state){
+  var el = document.getElementById(id);
+  if(!el) return;
+  el.className = 'dot ' + (state === 'green' ? 'dot-green' : state === 'red' ? 'dot-red' : state === 'blue' ? 'dot-blue' : 'dot-gray');
+}
+function setText(id, val){
+  var el = document.getElementById(id);
+  if(el) el.textContent = val;
+}
 
-  return '<div class="card">'
+function updateStatusBar(st){
+  setDot('dot-bot', st.edge_running ? 'green' : 'red');
+  setText('val-bot', st.edge_running ? '온라인' : '오프라인');
+
+  setDot('dot-cookie', st.cookie_valid ? 'green' : (st.cookie_file ? 'red' : 'gray'));
+  setText('val-cookie', st.cookie_valid ? '유효' : (st.cookie_file ? '만료됨' : '없음'));
+
+  setText('val-disk', st.disk_free_gb !== undefined ? st.disk_free_gb + ' GB 여유' : '-');
+
+  var actCount = st.active ? st.active.length : 0;
+  setDot('dot-active', actCount > 0 ? 'blue' : 'gray');
+  setText('val-active', actCount + '개');
+  setText('val-queued', (st.queued || 0) + '개');
+  setText('status-ts', nowTime() + ' 기준');
+}
+
+/* ── 활성 다운로드 패널 업데이트 ── */
+function statusLabel(s){
+  var map = {
+    queued: '대기', getting_info: '정보 수집', downloading: '다운로드 중',
+    completed: '완료', failed: '실패', cancelled: '취소'
+  };
+  return map[s] || s || '-';
+}
+
+function updateActivePanel(active){
+  if(!active || active.length === 0){
+    activePanel.classList.remove('visible');
+    return;
+  }
+  activePanel.classList.add('visible');
+  var html = '';
+  active.forEach(function(t){
+    var pct = Math.round(t.progress || 0);
+    var title = t.title || t.url || ('#' + t.id);
+    var meta = [];
+    if(t.speed) meta.push(t.speed);
+    if(t.eta)   meta.push('남은 시간 ' + t.eta);
+    if(t.downloaded) meta.push(t.downloaded);
+    var badge = t.status || 'downloading';
+    html += '<div class="task-row">'
+      + '<div class="task-top">'
+      + '<div class="task-title" title="' + title.replace(/"/g,'&quot;') + '">' + title + '</div>'
+      + '<div class="task-meta">'
+      + (meta.join(' &middot; '))
+      + '</div>'
+      + '<span class="task-status-badge ' + badge + '">' + statusLabel(badge) + '</span>'
+      + '</div>'
+      + (t.status === 'downloading' && pct > 0
+          ? '<div class="progress-wrap"><div class="progress-fill" style="width:' + pct + '%"></div></div>'
+            + '<div class="task-pct">' + pct + '%</div>'
+          : '')
+      + '</div>';
+  });
+  activeTasks.innerHTML = html;
+}
+
+/* ── 상태 폴링 (5초마다) ─ 모든 상태 요소의 단일 소스 ── */
+function pollStatus(){
+  fetch('/api/status').then(function(r){ return r.json(); }).then(function(st){
+    updateStatusBar(st);
+    updateActivePanel(st.active || []);
+    var actCount = st.active ? st.active.length : 0;
+    // 다운로드 완료 감지 → 기록 즉시 새로고침
+    if(prevActiveCount > 0 && actCount === 0){
+      fetchHistory();
+    }
+    prevActiveCount = actCount;
+  }).catch(function(){});
+}
+
+/* ── 기록 로드 ── */
+function fetchHistory(){
+  return fetch('/api/history').then(function(r){
+    if(!r.ok) throw new Error('fail');
+    return r.json();
+  }).then(function(data){
+    allData = data.items || data;
+    loadingEl.style.display = 'none';
+    renderFiltered();
+    updateHeaderStats();
+    lastUpdate.textContent = nowTime() + ' 업데이트';
+  });
+}
+
+/* ── 필터 적용 ── */
+function applyFilters(all){
+  var search = searchInput.value.trim().toLowerCase();
+  var channel = channelFilter.value.toLowerCase();
+  var membership = membershipCheck.checked;
+  var sort = sortSelect.value;
+  var filtered = all;
+  if(search){
+    filtered = filtered.filter(function(e){
+      return (e.title||'').toLowerCase().indexOf(search)!==-1
+          || (e.channel||'').toLowerCase().indexOf(search)!==-1;
+    });
+  }
+  if(channel){
+    filtered = filtered.filter(function(e){
+      return (e.channel||'').toLowerCase().indexOf(channel)!==-1;
+    });
+  }
+  if(membership){
+    filtered = filtered.filter(function(e){ return e.is_membership; });
+  }
+  if(sort==='oldest') filtered = filtered.slice().reverse();
+  else if(sort==='largest') filtered = filtered.slice().sort(function(a,b){ return (b.file_size||0)-(a.file_size||0); });
+  else if(sort==='smallest') filtered = filtered.slice().sort(function(a,b){ return (a.file_size||0)-(b.file_size||0); });
+  return filtered;
+}
+
+/* ── 헤더 통계 업데이트 ── */
+function updateHeaderStats(){
+  var channels = {}, totalSize = 0;
+  allData.forEach(function(e){
+    channels[e.channel||'Unknown'] = 1;
+    totalSize += e.file_size || 0;
+  });
+  setText('stat-files', allData.length);
+  setText('stat-size', fmtSize(totalSize));
+  setText('stat-channels', Object.keys(channels).length);
+}
+
+/* ── 채널 필터 목록 업데이트 ── */
+function updateChannelFilter(){
+  var counts = {};
+  allData.forEach(function(e){ var c = e.channel||'Unknown'; counts[c]=(counts[c]||0)+1; });
+  var list = Object.keys(counts).map(function(k){ return {name:k,count:counts[k]}; });
+  list.sort(function(a,b){ return b.count-a.count; });
+  var cur = channelFilter.value;
+  channelFilter.innerHTML = '<option value="">전체 채널</option>';
+  list.forEach(function(ch){
+    var o = document.createElement('option');
+    o.value = ch.name; o.textContent = ch.name + ' (' + ch.count + ')';
+    if(ch.name===cur) o.selected = true;
+    channelFilter.appendChild(o);
+  });
+}
+
+/* ── 카드 렌더 ── */
+function renderCard(item){
+  var thumb = item.thumbnail || 'https://img.youtube.com/vi/' + item.id + '/mqdefault.jpg';
+  var dur = fmtDur(item.duration);
+  var date = fmtDate(item.upload_date);
+  var size = item.file_size_str || fmtSize(item.file_size);
+  var url = 'https://www.youtube.com/watch?v=' + item.id;
+  var badges = '';
+  if(item.is_membership) badges += '<span class="badge badge-membership">🔒 멤버십</span>';
+  if(item.upload_to) badges += '<span class="badge badge-gdrive">☁️ Drive</span>';
+  return '<div class="card" onclick="window.open(\'' + url + '\',\'_blank\')">'
     + '<div class="card-thumb">'
     + '<img src="' + thumb + '" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'<div style=\\\'padding:35% 0;text-align:center;color:#d1d5db;font-size:1.5rem\\\'>🎬</div>\'">'
-    + (duration ? '<span class="dur">' + duration + '</span>' : '')
+    + (dur ? '<span class="dur">' + dur + '</span>' : '')
     + '</div>'
     + '<div class="card-body">'
     + '<div class="card-title" title="' + item.title.replace(/"/g,'&quot;') + '">' + item.title + '</div>'
     + '<div class="card-meta">'
     + '<span class="channel">' + item.channel + '</span>'
-    + '<span class="dot"></span>'
+    + '<span class="mdot"></span>'
     + '<span>' + date + '</span>'
-    + '<span class="dot"></span>'
+    + '<span class="mdot"></span>'
     + '<span>' + size + '</span>'
     + '</div>'
     + '<div class="card-badges">' + badges + '</div>'
@@ -383,101 +629,36 @@ function renderCard(item){
     + '</div>';
 }
 
-function applyFilters(all){
-  var search = searchInput.value.trim().toLowerCase();
-  var channel = channelFilter.value.toLowerCase();
-  var membership = membershipCheck.checked;
-  var sort = sortSelect.value;
-
-  var filtered = all;
-  if(search){
-    filtered = filtered.filter(function(e){
-      return (e.title || '').toLowerCase().indexOf(search) !== -1
-          || (e.channel || '').toLowerCase().indexOf(search) !== -1;
-    });
-  }
-  if(channel){
-    filtered = filtered.filter(function(e){
-      return (e.channel || '').toLowerCase().indexOf(channel) !== -1;
-    });
-  }
-  if(membership){
-    filtered = filtered.filter(function(e){ return e.is_membership; });
-  }
-
-  if(sort === 'oldest'){
-    filtered = filtered.slice().reverse();
-  } else if(sort === 'largest'){
-    filtered = filtered.slice().sort(function(a,b){ return (b.file_size||0) - (a.file_size||0); });
-  } else if(sort === 'smallest'){
-    filtered = filtered.slice().sort(function(a,b){ return (a.file_size||0) - (b.file_size||0); });
-  }
-
-  return filtered;
-}
-
-function updateStats(all){
-  var channels = {};
-  var totalSize = 0;
-  var memCount = 0;
-  all.forEach(function(e){
-    var ch = e.channel || 'Unknown';
-    channels[ch] = (channels[ch] || 0) + 1;
-    totalSize += e.file_size || 0;
-    if(e.is_membership) memCount++;
-  });
-
-  var chList = Object.keys(channels).map(function(k){
-    return {name: k, count: channels[k]};
-  }).sort(function(a,b){ return b.count - a.count; });
-
-  $('#stat-files').textContent = all.length;
-  $('#stat-size').textContent = fmtSize(totalSize);
-  $('#stat-channels').textContent = chList.length;
-
-  return chList;
-}
-
+/* ── 렌더 ── */
 function render(filtered){
   var total = filtered.length;
   if(total === 0){
-    cards.style.display = 'none';
+    cardsEl.style.display = 'none';
     emptyState.style.display = 'block';
-    pagination.style.display = 'none';
-    resultInfo.textContent = 'No results';
+    paginationEl.style.display = 'none';
+    resultInfo.textContent = '결과 없음';
     return;
   }
-
   emptyState.style.display = 'none';
-  cards.style.display = 'block';
-
+  cardsEl.style.display = 'block';
   var start = (currentPage - 1) * PER_PAGE;
-  var end = start + PER_PAGE;
-  var pageItems = filtered.slice(start, end);
-  cards.innerHTML = pageItems.map(renderCard).join('');
-
+  var pageItems = filtered.slice(start, start + PER_PAGE);
+  cardsEl.innerHTML = pageItems.map(renderCard).join('');
   var totalPages = Math.ceil(total / PER_PAGE);
-  resultInfo.textContent = 'Showing ' + pageItems.length + ' of ' + total + ' results';
-
+  resultInfo.textContent = total + '개 중 ' + pageItems.length + '개 표시';
   if(totalPages > 1){
-    pagination.style.display = 'flex';
-    pageInfo.textContent = 'Page ' + currentPage + ' of ' + totalPages;
+    paginationEl.style.display = 'flex';
+    pageInfo.textContent = currentPage + ' / ' + totalPages + ' 페이지';
     var html = '';
-    var maxButtons = 5;
-    var startPage = Math.max(1, currentPage - Math.floor(maxButtons/2));
-    var endPage = Math.min(totalPages, startPage + maxButtons - 1);
-    if(endPage - startPage + 1 < maxButtons){
-      startPage = Math.max(1, endPage - maxButtons + 1);
+    var maxB = 5;
+    var sp = Math.max(1, currentPage - Math.floor(maxB/2));
+    var ep = Math.min(totalPages, sp + maxB - 1);
+    if(ep - sp + 1 < maxB) sp = Math.max(1, ep - maxB + 1);
+    if(currentPage > 1) html += '<button data-page="' + (currentPage-1) + '">‹</button>';
+    for(var p = sp; p <= ep; p++){
+      html += '<button data-page="' + p + '"' + (p===currentPage?' class="active"':'') + '>' + p + '</button>';
     }
-    if(currentPage > 1){
-      html += '<button data-page="' + (currentPage - 1) + '">‹</button>';
-    }
-    for(var p = startPage; p <= endPage; p++){
-      html += '<button data-page="' + p + '"' + (p === currentPage ? ' class="active"' : '') + '>' + p + '</button>';
-    }
-    if(currentPage < totalPages){
-      html += '<button data-page="' + (currentPage + 1) + '">›</button>';
-    }
+    if(currentPage < totalPages) html += '<button data-page="' + (currentPage+1) + '">›</button>';
     pageButtons.innerHTML = html;
     Array.from(pageButtons.querySelectorAll('button')).forEach(function(btn){
       btn.addEventListener('click', function(){
@@ -486,115 +667,63 @@ function render(filtered){
       });
     });
   } else {
-    pagination.style.display = 'none';
+    paginationEl.style.display = 'none';
   }
 }
 
-function loadAndRender(){
-  var search = searchInput.value.trim().toLowerCase();
-  var filtered = applyFilters(allData);
+function renderFiltered(){
   currentPage = 1;
-  render(filtered);
-
-  var chList = updateStats(allData);
-
-  // Update channel filter options
-  var curVal = channelFilter.value;
-  channelFilter.innerHTML = '<option value="">All channels</option>';
-  chList.forEach(function(ch){
-    var opt = document.createElement('option');
-    opt.value = ch.name;
-    opt.textContent = ch.name + ' (' + ch.count + ')';
-    if(ch.name === curVal) opt.selected = true;
-    channelFilter.appendChild(opt);
-  });
+  updateChannelFilter();
+  render(applyFilters(allData));
 }
 
+/* ── 초기화 (로컬 대시보드) ── */
 function initLocal(){
-  var tryApi = function(){
-    Promise.all([
-      fetch('/api/history'),
-      fetch('/api/stats')
-    ]).then(function(responses){
-      if(!responses[0].ok || !responses[1].ok) throw new Error('fail');
-      return Promise.all([responses[0].json(), responses[1].json()]);
-    }).then(function(results){
-      allData = results[0].items || results[0];
-      loading.style.display = 'none';
-      loadAndRender();
-    }).catch(function(){
-      // API not ready, try raw
-      initRaw();
-    });
-  };
-  tryApi();
-
-  // Auto-refresh
+  fetchHistory().catch(function(){
+    loadingEl.style.display = 'none';
+    errorState.style.display = 'block';
+  });
+  pollStatus();
+  setInterval(pollStatus, 5000);
+  // 30초마다 기록도 자동 새로고침 (완료 감지와 별개로)
   setInterval(function(){
-    if(document.hidden) return;
-    fetch('/api/history').then(function(r){ return r.json(); }).then(function(data){
-      allData = data.items || data;
-      var filtered = applyFilters(allData);
-      render(filtered);
-      updateStats(allData);
-    }).catch(function(){});
+    if(!document.hidden) fetchHistory().catch(function(){});
   }, 30000);
 }
 
-function initRaw(){
-  fetch(RAW_URL).then(function(r){
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  }).then(function(data){
-    allData = Array.isArray(data) ? data : (data.items || []);
-    loading.style.display = 'none';
-    loadAndRender();
-  }).catch(function(){
-    loading.style.display = 'none';
-    errorState.style.display = 'block';
-    document.querySelector('.error-state p').innerHTML = 'Could not load download history from GitHub.';
-  });
-
-  setInterval(function(){
-    if(document.hidden) return;
-    fetch(RAW_URL).then(function(r){ return r.json(); }).then(function(data){
-      allData = Array.isArray(data) ? data : (data.items || []);
-      var filtered = applyFilters(allData);
-      render(filtered);
-      updateStats(allData);
-    }).catch(function(){});
-  }, 60000);
-}
-
-if(isLocal){
-  initLocal();
-} else {
-  initRaw();
-}
-
-// Filter events
+/* ── 이벤트 바인딩 ── */
 searchInput.addEventListener('input', function(){
-  clearTimeout(timer);
-  timer = setTimeout(function(){
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(function(){
     currentPage = 1;
     render(applyFilters(allData));
   }, 300);
 });
-
-channelFilter.addEventListener('change', function(){
-  currentPage = 1;
-  render(applyFilters(allData));
-});
-
-sortSelect.addEventListener('change', function(){
-  currentPage = 1;
-  render(applyFilters(allData));
-});
-
+channelFilter.addEventListener('change', function(){ currentPage=1; render(applyFilters(allData)); });
+sortSelect.addEventListener('change', function(){ currentPage=1; render(applyFilters(allData)); });
 membershipCheck.addEventListener('change', function(){
-  currentPage = 1;
+  membershipLabel.classList.toggle('active', membershipCheck.checked);
+  currentPage=1;
   render(applyFilters(allData));
 });
+
+initLocal();
+
+/* ── GitHub Pages 모드 ── */
+function initRaw(){
+  fetch(RAW_URL).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(data){
+    allData = Array.isArray(data) ? data : (data.items||[]);
+    loadingEl.style.display = 'none';
+    renderFiltered();
+    updateHeaderStats();
+  }).catch(function(){
+    loadingEl.style.display = 'none';
+    errorState.style.display = 'block';
+  });
+}
 
 })();
 </script>
