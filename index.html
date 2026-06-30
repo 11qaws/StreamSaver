@@ -1169,6 +1169,10 @@ function loadSettings(){
         +'<a class="modal-btn secondary" href="/api/export?format=json" download>⬇ JSON</a>'
         +'<a class="modal-btn secondary" href="/api/export?format=csv" download>⬇ CSV</a>'
         +'</div></div>'
+      +'<div class="setting-card wide"><div class="setting-label">기록 정리</div>'
+        +'<div class="setting-value" style="font-size:0.8125rem;color:var(--text3);margin-bottom:8px">파일이 삭제된 기록 항목 제거</div>'
+        +'<button class="modal-btn secondary" onclick="runCleanup()">🗑 파일 없는 항목 정리</button>'
+        +'</div>'
       +'</div>';
   }).catch(function(){ el.innerHTML='<p style="color:var(--text3);padding:16px">설정을 불러오지 못했습니다.</p>'; });
 }
@@ -1434,6 +1438,17 @@ if(refreshBtn){
     fetchHistory().catch(function(){});
     setTimeout(function(){ refreshBtn.classList.remove('spin'); }, 600);
   });
+}
+
+/* ── 기록 정리 ── */
+function runCleanup(){
+  fetch('/api/cleanup',{method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
+    if(d.ok){
+      var msg=d.removed>0?d.removed+'개 항목 삭제됨 ('+d.kept+'개 유지)':'삭제할 항목이 없습니다';
+      showToast(msg,'ok');
+      if(d.removed>0){ fetchHistory().catch(function(){}); loadSettings(); }
+    } else { showToast(d.error||'정리 실패','err'); }
+  }).catch(function(){ showToast('연결 오류','err'); });
 }
 
 /* ── 채널 관리 showChMsg → 토스트로 교체 ── */

@@ -92,6 +92,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._channels_add(data)
             elif path == "/api/download":
                 self._download_add(data)
+            elif path == "/api/cleanup":
+                self._cleanup()
             else:
                 self.send_error(404)
         except Exception as e:
@@ -235,6 +237,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"download_add error: {e}")
             self._json({"ok": False, "error": "내부 오류가 발생했습니다"}, 500)
+
+    def _cleanup(self):
+        path = config.HISTORY_FILE
+        if not os.path.exists(path):
+            self._json({"ok": True, "removed": 0})
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception as e:
+            self._json({"ok": False, "error": str(e)}, 500)
+            return
+        kept = [e for e in history if not e.get("file_path") or os.path.exists(e["file_path"])]
+        removed = len(history) - len(kept)
+        if removed > 0:
+            tmp = path + ".tmp"
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(kept, f, ensure_ascii=False, indent=2)
+                os.replace(tmp, path)
+                _cache["mtime"] = 0  # invalidate cache
+            except Exception as e:
+                self._json({"ok": False, "error": str(e)}, 500)
+                return
+        self._json({"ok": True, "removed": removed, "kept": len(kept)})
 
     def _cancel(self, data):
         dm = _dm
