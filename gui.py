@@ -522,49 +522,139 @@ class GUIManager:
     def _connect_server(self, icon, item=None):
         def _dialog():
             import tkinter as tk
+            from PIL import ImageTk
+
+            # ── 색상 (dashboard 팔레트) ───────────────────────────
+            BG      = "#ffffff"
+            HEADER  = "#2563eb"
+            PRIMARY = "#2563eb"
+            P_HOV   = "#1d4ed8"
+            SEC     = "#f3f4f6"
+            S_HOV   = "#e5e7eb"
+            TEXT    = "#111827"
+            SUB     = "#6b7280"
+            BORDER  = "#e5e7eb"
+
             root = tk.Tk()
             root.withdraw()
 
             dlg = tk.Toplevel(root)
-            dlg.title("서버 연결")
+            dlg.title("StreamSaver — 서버 연결")
+            dlg.configure(bg=BG)
             dlg.resizable(False, False)
             dlg.attributes("-topmost", True)
             dlg.grab_set()
 
-            pad = {"padx": 18, "pady": 6}
-
-            tk.Label(dlg, text="Discord에서 /setup 입력 후 받은 코드를 입력하세요.",
-                     justify="center", **pad).pack()
-            tk.Label(dlg, text="아직 /setup을 실행하지 않았다면 먼저 Discord를 여세요.",
-                     foreground="#666", font=("", 9), **pad).pack()
-
-            tk.Button(
-                dlg, text="🔗 Discord 열기",
-                command=lambda: webbrowser.open("https://discord.com/app"),
-                relief="groove",
-            ).pack(pady=(4, 10))
-
-            tk.Label(dlg, text="코드 (예: ABC-123)", **pad).pack()
-            entry = tk.Entry(dlg, width=16, font=("Consolas", 15), justify="center")
-            entry.pack(padx=18, pady=4)
-            entry.focus_set()
+            W, H = 380, 370
+            sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
+            dlg.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
 
             result = {"code": None}
 
             def _submit(e=None):
-                result["code"] = entry.get()
+                result["code"] = entry.get().strip()
                 dlg.destroy()
 
             def _cancel(e=None):
                 dlg.destroy()
 
-            entry.bind("<Return>", _submit)
             dlg.protocol("WM_DELETE_WINDOW", _cancel)
 
-            btn_frame = tk.Frame(dlg)
-            btn_frame.pack(pady=10)
-            tk.Button(btn_frame, text="연결", width=8, command=_submit).pack(side="left", padx=4)
-            tk.Button(btn_frame, text="취소", width=8, command=_cancel).pack(side="left", padx=4)
+            # ── 헤더 ─────────────────────────────────────────────
+            hdr = tk.Frame(dlg, bg=HEADER, height=76)
+            hdr.pack(fill="x")
+            hdr.pack_propagate(False)
+
+            icon_pil   = _make_icon(TrayState.IDLE).resize((44, 44))
+            icon_photo = ImageTk.PhotoImage(icon_pil)
+            ico_lbl = tk.Label(hdr, image=icon_photo, bg=HEADER)
+            ico_lbl.image = icon_photo
+            ico_lbl.pack(side="left", padx=(20, 12), pady=16)
+
+            hdr_text = tk.Frame(hdr, bg=HEADER)
+            hdr_text.pack(side="left")
+            tk.Label(hdr_text, text="StreamSaver",
+                     font=("Segoe UI", 13, "bold"), bg=HEADER, fg="white").pack(anchor="w")
+            tk.Label(hdr_text, text="서버 연결",
+                     font=("Segoe UI", 9), bg=HEADER, fg="#bfdbfe").pack(anchor="w")
+
+            # ── 본문 ─────────────────────────────────────────────
+            body = tk.Frame(dlg, bg=BG, padx=24, pady=20)
+            body.pack(fill="both", expand=True)
+
+            tk.Label(body,
+                     text="Discord에서 /setup 을 입력하고 받은 코드를 입력하세요.",
+                     font=("Segoe UI", 9), bg=BG, fg=TEXT,
+                     wraplength=330, justify="left").pack(anchor="w")
+            tk.Label(body,
+                     text="아직 /setup을 실행하지 않았다면 먼저 Discord를 여세요.",
+                     font=("Segoe UI", 9), bg=BG, fg=SUB,
+                     wraplength=330, justify="left").pack(anchor="w", pady=(2, 16))
+
+            # Discord 열기 버튼
+            def _hover(w, lbl, on):
+                c = S_HOV if on else SEC
+                w.configure(bg=c)
+                lbl.configure(bg=c)
+
+            disc_f = tk.Frame(body, bg=BORDER, pady=1, padx=1)
+            disc_f.pack(fill="x", pady=(0, 20))
+            disc_i = tk.Frame(disc_f, bg=SEC, pady=9)
+            disc_i.pack(fill="x")
+            disc_l = tk.Label(disc_i, text="🔗   Discord 열기",
+                              font=("Segoe UI", 9), bg=SEC, fg=TEXT, cursor="hand2")
+            disc_l.pack()
+            _cb_disc = lambda e: webbrowser.open("https://discord.com/app")
+            for w in (disc_f, disc_i, disc_l):
+                w.bind("<Button-1>", _cb_disc)
+                w.bind("<Enter>", lambda e, i=disc_i, l=disc_l: _hover(i, l, True))
+                w.bind("<Leave>", lambda e, i=disc_i, l=disc_l: _hover(i, l, False))
+
+            # 입력 필드
+            tk.Label(body, text="페어링 코드", font=("Segoe UI", 9, "bold"),
+                     bg=BG, fg=TEXT).pack(anchor="w", pady=(0, 6))
+
+            ef = tk.Frame(body, bg=BORDER, pady=1, padx=1)
+            ef.pack(fill="x")
+            entry = tk.Entry(ef, font=("Consolas", 16), justify="center",
+                             bg="#f9fafb", fg=TEXT, insertbackground=TEXT,
+                             relief="flat", bd=10)
+            entry.pack(fill="x")
+            entry.bind("<Return>", _submit)
+            entry.focus_set()
+
+            tk.Label(body, text="예: ABC-123", font=("Segoe UI", 8),
+                     bg=BG, fg=SUB).pack(anchor="w", pady=(4, 0))
+
+            # ── 하단 버튼 ─────────────────────────────────────────
+            foot = tk.Frame(body, bg=BG)
+            foot.pack(fill="x", pady=(20, 0))
+
+            def _btn_hover(f, l, bg, hbg, on):
+                c = hbg if on else bg
+                f.configure(bg=c); l.configure(bg=c)
+
+            # 취소
+            can_f = tk.Frame(foot, bg=SEC, pady=9, padx=20)
+            can_f.pack(side="right", padx=(8, 0))
+            can_l = tk.Label(can_f, text="취소", font=("Segoe UI", 9),
+                             bg=SEC, fg=TEXT, cursor="hand2")
+            can_l.pack()
+            for w in (can_f, can_l):
+                w.bind("<Button-1>", _cancel)
+                w.bind("<Enter>", lambda e: _btn_hover(can_f, can_l, SEC, S_HOV, True))
+                w.bind("<Leave>", lambda e: _btn_hover(can_f, can_l, SEC, S_HOV, False))
+
+            # 연결
+            con_f = tk.Frame(foot, bg=PRIMARY, pady=9, padx=28)
+            con_f.pack(side="right")
+            con_l = tk.Label(con_f, text="연결", font=("Segoe UI", 9, "bold"),
+                             bg=PRIMARY, fg="white", cursor="hand2")
+            con_l.pack()
+            for w in (con_f, con_l):
+                w.bind("<Button-1>", _submit)
+                w.bind("<Enter>", lambda e: _btn_hover(con_f, con_l, PRIMARY, P_HOV, True))
+                w.bind("<Leave>", lambda e: _btn_hover(con_f, con_l, PRIMARY, P_HOV, False))
 
             root.mainloop()
 
