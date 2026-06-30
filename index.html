@@ -393,11 +393,15 @@ header{
   overflow:hidden;margin:14px 0 4px;background:var(--bg2)
 }
 .stat-card{
-  flex:1;padding:14px 16px;border-right:1px solid var(--border);text-align:center
+  flex:1;padding:14px 16px;border-right:1px solid var(--border);text-align:center;
+  transition:background .15s
 }
 .stat-card:last-child{border-right:none}
 .stat-card .s-val{font-size:1.375rem;font-weight:700;color:var(--text);letter-spacing:-0.02em}
 .stat-card .s-label{font-size:0.75rem;color:var(--text4);margin-top:2px}
+.stat-card-active{background:var(--accentBg) !important;}
+.stat-card-active .s-val{color:var(--accentT)}
+.stat-card-active .s-label{color:var(--accentT)}
 
 /* ── 카드 상세 모달 ── */
 .modal-overlay{
@@ -695,6 +699,12 @@ header{
         <option value="largest">큰 파일순</option>
         <option value="smallest">작은 파일순</option>
       </select>
+      <select id="period-filter">
+        <option value="">전체 기간</option>
+        <option value="today">오늘</option>
+        <option value="week">최근 7일</option>
+        <option value="month">이번 달</option>
+      </select>
       <label id="membership-label">
         <input type="checkbox" id="membership-filter"> 멤버십만
       </label>
@@ -810,6 +820,7 @@ var $ = function(s){ return document.querySelector(s); };
 var searchInput   = $('#search');
 var channelFilter = $('#channel-filter');
 var sortSelect    = $('#sort');
+var periodSelect  = $('#period-filter');
 var membershipCheck = $('#membership-filter');
 var membershipLabel = $('#membership-label');
 var cardsEl       = $('#cards');
@@ -1019,10 +1030,22 @@ function applyFilters(all){
   var channel=channelFilter.value.toLowerCase();
   var membership=membershipCheck.checked;
   var sort=sortSelect.value;
+  var period=periodSelect.value;
   var f=all;
   if(search) f=f.filter(function(e){ return (e.title||'').toLowerCase().indexOf(search)!==-1||(e.channel||'').toLowerCase().indexOf(search)!==-1; });
   if(channel) f=f.filter(function(e){ return (e.channel||'').toLowerCase().indexOf(channel)!==-1; });
   if(membership) f=f.filter(function(e){ return e.is_membership; });
+  if(period){
+    var now=new Date();
+    var periodStart;
+    if(period==='today') periodStart=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    else if(period==='week') periodStart=new Date(now.getTime()-7*24*3600*1000);
+    else if(period==='month') periodStart=new Date(now.getFullYear(),now.getMonth(),1);
+    if(periodStart) f=f.filter(function(e){
+      var dl=new Date((e.downloaded_at||'').replace(' ','T'));
+      return !isNaN(dl.getTime())&&dl>=periodStart;
+    });
+  }
   if(sort==='oldest') f=f.slice().reverse();
   else if(sort==='largest') f=f.slice().sort(function(a,b){ return (b.file_size||0)-(a.file_size||0); });
   else if(sort==='smallest') f=f.slice().sort(function(a,b){ return (a.file_size||0)-(b.file_size||0); });
@@ -1256,6 +1279,23 @@ document.getElementById('channel-chips').addEventListener('click',function(e){
   currentPage=1; render(applyFilters(allData)); updateChannelFilter();
 });
 sortSelect.addEventListener('change',function(){ currentPage=1; render(applyFilters(allData)); });
+periodSelect.addEventListener('change',function(){ currentPage=1; _syncPeriodCard(); render(applyFilters(allData)); });
+
+/* ── 기간 필터 ── */
+var _todayCard = document.getElementById('ss-today') ? document.getElementById('ss-today').parentElement : null;
+if(_todayCard){
+  _todayCard.style.cursor='pointer';
+  _todayCard.title='클릭: 오늘 다운로드만 표시';
+  _todayCard.addEventListener('click',function(){
+    periodSelect.value = periodSelect.value==='today' ? '' : 'today';
+    currentPage=1; _syncPeriodCard(); render(applyFilters(allData));
+  });
+}
+function _syncPeriodCard(){
+  if(!_todayCard) return;
+  if(periodSelect.value==='today') _todayCard.classList.add('stat-card-active');
+  else _todayCard.classList.remove('stat-card-active');
+}
 membershipCheck.addEventListener('change',function(){
   membershipLabel.classList.toggle('active',membershipCheck.checked);
   currentPage=1; render(applyFilters(allData));
