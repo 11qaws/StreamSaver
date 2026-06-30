@@ -66,7 +66,7 @@ New-Item -ItemType Directory -Force -Path $OUTDIR | Out-Null
 & $ISCC "$PSScriptRoot\setup.iss"
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
-$OutFile = Get-ChildItem "$OUTDIR\StreamSaver_Setup_v*.exe" | Select-Object -Last 1
+$OutFile = Get-ChildItem "$OUTDIR\StreamSaver_Setup_v*.exe" | Sort-Object LastWriteTime | Select-Object -Last 1
 Write-Host ""
 Write-Host "=== Build complete ===" -ForegroundColor Cyan
 Write-Host "Installer: $($OutFile.FullName)" -ForegroundColor Green
