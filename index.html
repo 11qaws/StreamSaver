@@ -674,6 +674,7 @@ header{
   <div id="tab-history" class="tab-panel visible">
     <div id="stats-summary" class="stats-summary" style="display:none">
       <div class="stat-card"><div class="s-val" id="ss-total">-</div><div class="s-label">전체 다운로드</div></div>
+      <div class="stat-card"><div class="s-val" id="ss-today">-</div><div class="s-label">오늘 다운로드</div></div>
       <div class="stat-card"><div class="s-val" id="ss-size">-</div><div class="s-label">총 용량</div></div>
       <div class="stat-card"><div class="s-val" id="ss-mem">-</div><div class="s-label">멤버십 비율</div></div>
       <div class="stat-card"><div class="s-val" id="ss-ch">-</div><div class="s-label">채널 수</div></div>
@@ -1084,7 +1085,9 @@ function renderCard(item, idx){
     +'<span class="mdot"></span>'
     +'<span>'+size+'</span>'
     +'</div>'
-    +'<div class="card-badges">'+badges+'</div>'
+    +'<div class="card-badges">'+badges
+    +(item.downloaded_at?'<span class="badge" style="background:none;color:var(--text4);padding-left:0;font-size:0.7rem">↓ '+item.downloaded_at.slice(0,10)+'</span>':'')
+    +'</div>'
     +'</div>'
     +'</div>';
 }
@@ -1264,8 +1267,11 @@ function updateStatsSummary(all){
   statsSummary.style.display='flex';
   var mem=all.filter(function(e){ return e.is_membership; }).length;
   var channels={};
+  var todayStr=new Date().toISOString().slice(0,10); // YYYY-MM-DD
+  var todayCount=all.filter(function(e){ return (e.downloaded_at||'').startsWith(todayStr); }).length;
   all.forEach(function(e){ channels[e.channel||'Unknown']=true; });
   setText('ss-total', all.length+'개');
+  setText('ss-today', todayCount+'개');
   setText('ss-size', fmtSize(all.reduce(function(s,e){ return s+(e.file_size||0); },0)));
   setText('ss-mem', all.length ? Math.round(mem/all.length*100)+'%' : '0%');
   setText('ss-ch', Object.keys(channels).length+'개');
@@ -1294,6 +1300,7 @@ function openModal(item){
     ['파일 크기', fmtSize(item.file_size)],
     ['멤버십', item.is_membership?'예':'아니오'],
   ];
+  if(item.downloaded_at) rows.push(['다운로드 일시', item.downloaded_at]);
   if(item.upload_to) rows.push(['Drive 업로드', item.upload_to]);
   if(item.file_path) rows.push(['파일 경로', item.file_path]);
   modalRows.innerHTML=rows.map(function(r){
