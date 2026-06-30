@@ -243,8 +243,11 @@ class RelayClient:
         loop = asyncio.get_event_loop()
 
         if cmd == "dl":
-            task = self.dl.enqueue(args["url"], args.get("user", "?"))
-            return f"✅ #{task.id} 대기열 추가됨"
+            try:
+                task = self.dl.enqueue(args["url"], args.get("user", "?"))
+                return f"✅ #{task.id} 대기열 추가됨"
+            except ValueError as e:
+                return f"❌ {e}"
 
         elif cmd == "cancel":
             tid = args.get("task_id")
@@ -354,25 +357,38 @@ class RelayClient:
 
     def _clear_pair_code_env(self):
         env_path = os.path.join(config.BASE_DIR, ".env")
+        tmp_path = env_path + ".tmp"
         try:
             with open(env_path, "r", encoding="utf-8-sig") as f:
                 content = f.read()
             import re
             content = re.sub(r"^RELAY_PAIR_CODE=.*$", "RELAY_PAIR_CODE=", content, flags=re.MULTILINE)
-            with open(env_path, "w", encoding="utf-8") as f:
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(content)
+            os.replace(tmp_path, env_path)
         except Exception as e:
             logger.debug("clear pair code env: %s", e)
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
     def _guild_file(self) -> str:
         return os.path.join(config.BASE_DIR, ".relay_guild")
 
     def _save_guild_id(self, guild_id: str):
+        fpath = self._guild_file()
+        tmp = fpath + ".tmp"
         try:
-            with open(self._guild_file(), "w") as f:
+            with open(tmp, "w") as f:
                 f.write(guild_id)
+            os.replace(tmp, fpath)
         except Exception as e:
             logger.debug("guild_id save error: %s", e)
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
 
     def _load_guild_id(self) -> str:
         try:

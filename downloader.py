@@ -1,5 +1,6 @@
 import subprocess
 import threading
+import shutil
 import os
 import re
 import json
@@ -10,6 +11,9 @@ from enum import Enum
 from datetime import datetime
 
 import config
+
+MAX_QUEUE_SIZE = 20    # 동시 대기열 최대 크기 (active + queued)
+MIN_FREE_GB    = 2.0   # 다운로드 시작 전 최소 여유 디스크 공간
 
 logger = logging.getLogger("StreamSaver.Downloader")
 _NW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)  # CMD 창 숨김
@@ -55,8 +59,10 @@ class DownloadManager:
         self.active = []
         self.sem = threading.Semaphore(config.MAX_PARALLEL)
         self._lock = threading.Lock()
+        self._archive_lock = threading.Lock()
         self._counter = 0
         self._callbacks = []
+        self._active_urls: set = set()   # 대기+다운로드 중인 URL 집합 (중복 방지)
 
     def on_event(self, cb):
         self._callbacks.append(cb)
@@ -176,24 +182,42 @@ class DownloadManager:
         if not os.path.exists(config.ARCHIVE_FILE):
             return False
         try:
-            with open(config.ARCHIVE_FILE) as f:
-                text = f.read()
+            with self._archive_lock:
+                with open(config.ARCHIVE_FILE) as f:
+                    text = f.read()
             return url in text or vid in text
         except Exception:
             return False
 
     def _add_archive(self, url, vid):
         try:
-            with open(config.ARCHIVE_FILE, "a") as f:
-                f.write(f"{vid}\t{url}\n")
+            with self._archive_lock:
+                with open(config.ARCHIVE_FILE, "a") as f:
+                    f.write(f"{vid}\t{url}\n")
         except Exception as e:
-            logger.error(f"archive write error: {e}")
+            logger.error("archive write error: %s", e)
 
     def enqueue(self, url, requested_by):
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            raise ValueError("올바르지 않은 URL 스킴입니다 (http/https만 허용)")
+        if len(url) > 2048:
+            raise ValueError("URL이 너무 깁니다")
+
+        with self._lock:
+            total = self.queue.qsize() + len(self.active)
+            if total >= MAX_QUEUE_SIZE:
+                raise ValueError(f"대기열이 가득 찼습니다 (최대 {MAX_QUEUE_SIZE}개)")
+            if url in self._active_urls:
+                raise ValueError("이미 대기 중이거나 다운로드 중인 URL입니다")
+            self._counter += 1
+            task_id = self._counter
+            self._active_urls.add(url)
+
         task = DownloadTask(url, requested_by)
-        task.id = self._next_id()
+        task.id = task_id
         self.queue.put(task)
-        logger.info(f"Task #{task.id} queued: {url}")
+        logger.info("Task #%d queued: %s", task.id, url)
         self._emit("queued", task)
         self._kick()
         return task
@@ -214,6 +238,7 @@ class DownloadManager:
         finally:
             with self._lock:
                 self.active.remove(task)
+                self._active_urls.discard(task.url)
             self.sem.release()
             self._kick()
 
@@ -235,7 +260,7 @@ class DownloadManager:
         ]
         if state == "live":
             cmd.append("--live-from-start")
-        cmd.append(task.url)
+        cmd += ["--", task.url]   # -- 이후 URL이 옵션으로 파싱되지 않도록 방지
         return cmd
 
     def _run_dl(self, task, cmd):
@@ -306,6 +331,18 @@ class DownloadManager:
     def _download(self, task):
         task.status = TaskStatus.GETTING_INFO
         self._emit("info_start", task)
+
+        # 디스크 여유 공간 확인
+        try:
+            check_path = config.DOWNLOAD_DIR if os.path.exists(config.DOWNLOAD_DIR) else config.BASE_DIR
+            free_gb = shutil.disk_usage(check_path).free / (1024 ** 3)
+            if free_gb < MIN_FREE_GB:
+                task.status = TaskStatus.FAILED
+                task.error = f"디스크 여유 공간 부족 ({free_gb:.1f}GB / 최소 {MIN_FREE_GB:.0f}GB 필요)"
+                self._emit("failed", task)
+                return
+        except Exception as e:
+            logger.warning("Disk space check failed: %s", e)
 
         info, used_cookies, info_err = self.get_info(task.url)
 
@@ -551,10 +588,32 @@ class DownloadManager:
             t = self.queue.get()
             if t.id == task_id:
                 found = True
+                with self._lock:
+                    self._active_urls.discard(t.url)
             else:
                 new_queue.put(t)
         self.queue = new_queue
         return found or False
+
+    def shutdown(self):
+        """앱 종료 시 모든 활성 다운로드 프로세스 강제 종료."""
+        with self._lock:
+            tasks = list(self.active)
+        for task in tasks:
+            task.cancelled = True
+            if task.process and task.process.poll() is None:
+                try:
+                    task.process.kill()
+                    logger.info("Killed download process for task #%d", task.id)
+                except Exception as e:
+                    logger.debug("Process kill error: %s", e)
+        while not self.queue.empty():
+            try:
+                self.queue.get_nowait()
+            except Exception:
+                pass
+        with self._lock:
+            self._active_urls.clear()
 
     def status(self):
         with self._lock:

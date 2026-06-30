@@ -95,6 +95,8 @@ class AppContext:
             return
         self._shutting_down = True
         logger.info("Shutting down...")
+        if self.dm:
+            self.dm.shutdown()
         if self.rc:
             self.rc.stop()
         if self.sw:

@@ -8,6 +8,14 @@ Oracle Cloud VPS에서 실행 — Discord 봇 + WebSocket 라우터
 - 공유 루프(heartbeat, bot_status push)에서 개별 오류가 전체에 영향 없도록 try/except 격리
 - 공유 dict 순회 시 list() 스냅샷 사용
 - 에러 로그에 항상 guild_id 포함
+
+보안/안정성:
+- WebSocket 연결 수 제한 (MAX_WS_CONNECTIONS)
+- 수신 메시지 크기 제한 (max_size=1MiB)
+- pair_code 만료 주기적 정리 (_cleanup_loop)
+- Discord 명령 rate limit (cooldown 데코레이터)
+- URL 스킴·길이 검증
+- state.json 원자적 쓰기 (tmp → replace)
 """
 import asyncio
 import json
@@ -34,7 +42,9 @@ logger = logging.getLogger("Relay")
 DISCORD_TOKEN  = os.environ["DISCORD_TOKEN"]
 WS_PORT        = int(os.getenv("WS_PORT", "8765"))
 WS_SECRET      = os.getenv("WS_SECRET", "")
-SERVER_VERSION = "1.0.11"
+SERVER_VERSION = "1.0.12"
+
+MAX_WS_CONNECTIONS = 100   # 동시 WebSocket 연결 최대 수
 
 # ── 상태 ─────────────────────────────────────────────────────────────────────
 
@@ -54,6 +64,7 @@ dl_state: dict[str, dict] = {}
 
 bot: Optional[commands.Bot] = None
 bot_discord_connected: bool = False  # Discord API 연결 상태
+_active_connections: int = 0         # 현재 활성 WebSocket 연결 수
 
 
 # ── 상태 영속화 ───────────────────────────────────────────────────────────────
@@ -75,7 +86,7 @@ def _load_state():
 
 
 def _save_state():
-    """guild → channel_id 매핑을 파일에 저장."""
+    """guild → channel_id 매핑을 파일에 원자적으로 저장 (tmp → replace)."""
     data = {
         "guilds": {
             gid: {"channel_id": info.get("channel_id")}
@@ -83,11 +94,17 @@ def _save_state():
             if info.get("channel_id")
         }
     }
+    tmp = STATE_FILE + ".tmp"
     try:
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+        os.replace(tmp, STATE_FILE)
     except Exception as e:
         logger.warning("State save error: %s", e)
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
 
 
 # ── 유틸 ─────────────────────────────────────────────────────────────────────
@@ -122,16 +139,38 @@ async def _heartbeat_loop():
     """45초마다 모든 PC에 heartbeat 전송.
     릴레이 hang 감지 + 봇 Discord 상태 정기 동기화."""
     while True:
-        await asyncio.sleep(45)
-        connected_count = sum(1 for g in guilds.values() if g.get("ws"))
-        if connected_count == 0:
-            continue
-        payload = json.dumps({
-            "type":        "heartbeat",
-            "bot_discord": bot_discord_connected,
-        })
-        await _push_to_all(payload)
-        logger.debug("Heartbeat sent to %d clients", connected_count)
+        try:
+            await asyncio.sleep(45)
+            connected_count = sum(1 for g in guilds.values() if g.get("ws"))
+            if connected_count == 0:
+                continue
+            payload = json.dumps({
+                "type":        "heartbeat",
+                "bot_discord": bot_discord_connected,
+            })
+            await _push_to_all(payload)
+            logger.debug("Heartbeat sent to %d clients", connected_count)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("heartbeat_loop error: %s", e)
+
+
+async def _cleanup_loop():
+    """5분마다 만료된 pair_code 정리."""
+    while True:
+        try:
+            await asyncio.sleep(300)
+            now = datetime.utcnow()
+            expired = [c for c, e in list(pair_codes.items()) if e["expires"] < now]
+            for c in expired:
+                pair_codes.pop(c, None)
+            if expired:
+                logger.debug("Cleaned %d expired pair_codes", len(expired))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("cleanup_loop error: %s", e)
 
 
 async def _send_cmd(guild_id: str, cmd: str, args: dict, timeout: float = 12.0) -> str:
@@ -182,9 +221,17 @@ async def _channel_send(guild_id: str, content: str):
 
 async def ws_handler(ws):
     """각 PC 연결마다 독립 코루틴으로 실행 — 연결 오류가 다른 사용자에게 영향 없음."""
+    global _active_connections
+
+    if _active_connections >= MAX_WS_CONNECTIONS:
+        logger.warning("WS rejected: max connections (%d) reached", MAX_WS_CONNECTIONS)
+        await ws.close(1008, "Too many connections")
+        return
+
+    _active_connections += 1
     guild_id: Optional[str] = None
     addr = ws.remote_address
-    logger.info("WS connected: %s", addr)
+    logger.info("WS connected: %s (total: %d)", addr, _active_connections)
 
     try:
         async for raw in ws:
@@ -273,9 +320,10 @@ async def ws_handler(ws):
     except Exception as e:
         logger.error("ws_handler error guild=%s: %s", guild_id, e)
     finally:
+        _active_connections -= 1
         if guild_id and guilds.get(guild_id, {}).get("ws") is ws:
             del guilds[guild_id]["ws"]
-            logger.info("WS disconnected: guild=%s", guild_id)
+            logger.info("WS disconnected: guild=%s (total: %d)", guild_id, _active_connections)
             asyncio.create_task(_channel_send(
                 guild_id, "⚠️ StreamSaver PC 연결이 끊어졌습니다."))
 
@@ -293,11 +341,9 @@ class RelayCog(commands.Cog):
         global bot_discord_connected
         bot_discord_connected = True
         logger.info("Bot logged in as %s", self.bot.user)
-        # 이전 로컬 봇이 길드별로 등록한 커맨드 정리
         for guild in self.bot.guilds:
             self.bot.tree.clear_commands(guild=guild)
             await self.bot.tree.sync(guild=guild)
-        # 글로벌 슬래시 커맨드 등록
         synced = await self.bot.tree.sync()
         logger.info("Synced %d slash commands", len(synced))
         asyncio.create_task(_push_to_all(json.dumps({
@@ -322,21 +368,20 @@ class RelayCog(commands.Cog):
     # ── /setup ───────────────────────────────────────────────────────────────
 
     @app_commands.command(name="setup", description="이 채널을 StreamSaver 채널로 설정합니다")
+    @app_commands.checks.cooldown(1, 60.0, key=lambda i: (i.guild_id, i.user.id))
     async def cmd_setup(self, interaction: discord.Interaction):
         gid = str(interaction.guild_id)
 
         if gid not in guilds:
             guilds[gid] = {}
         guilds[gid]["channel_id"] = interaction.channel_id
-        _save_state()  # channel_id 영속화
+        _save_state()
 
-        # 이미 PC가 연결돼 있으면 코드 불필요
         if _is_connected(gid):
             await interaction.response.send_message(
                 "✅ 이 채널로 설정 완료!\nStreamSaver PC가 이미 연결되어 있습니다.")
             return
 
-        # 페어링 코드 발급
         code = _gen_code()
         pair_codes[code] = {
             "guild_id": gid,
@@ -358,7 +403,21 @@ class RelayCog(commands.Cog):
 
     @app_commands.command(name="dl", description="YouTube 영상 다운로드")
     @app_commands.describe(url="YouTube URL")
+    @app_commands.checks.cooldown(3, 30.0, key=lambda i: (i.guild_id, i.user.id))
     async def cmd_dl(self, interaction: discord.Interaction, url: str):
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            await interaction.response.send_message(
+                "❌ 올바르지 않은 URL입니다. http:// 또는 https://로 시작해야 합니다.",
+                ephemeral=True,
+            )
+            return
+        if len(url) > 2048:
+            await interaction.response.send_message(
+                "❌ URL이 너무 깁니다 (최대 2048자).",
+                ephemeral=True,
+            )
+            return
         gid = str(interaction.guild_id)
         await interaction.response.defer()
         result = await _send_cmd(gid, "dl", {"url": url, "user": interaction.user.name})
@@ -368,6 +427,7 @@ class RelayCog(commands.Cog):
 
     @app_commands.command(name="cancel", description="다운로드 작업 취소")
     @app_commands.describe(task_id="취소할 작업")
+    @app_commands.checks.cooldown(5, 30.0, key=lambda i: (i.guild_id, i.user.id))
     async def cmd_cancel(self, interaction: discord.Interaction, task_id: int):
         gid = str(interaction.guild_id)
         await interaction.response.defer()
@@ -401,6 +461,7 @@ class RelayCog(commands.Cog):
     # ── /waiting ─────────────────────────────────────────────────────────────
 
     @app_commands.command(name="waiting", description="진행 중 / 대기 목록")
+    @app_commands.checks.cooldown(5, 30.0, key=lambda i: (i.guild_id, i.user.id))
     async def cmd_waiting(self, interaction: discord.Interaction):
         gid = str(interaction.guild_id)
         await interaction.response.defer()
@@ -410,6 +471,7 @@ class RelayCog(commands.Cog):
     # ── /status ──────────────────────────────────────────────────────────────
 
     @app_commands.command(name="status", description="봇 상태 확인")
+    @app_commands.checks.cooldown(5, 30.0, key=lambda i: (i.guild_id, i.user.id))
     async def cmd_status(self, interaction: discord.Interaction):
         gid       = str(interaction.guild_id)
         connected = _is_connected(gid)
@@ -427,6 +489,7 @@ class RelayCog(commands.Cog):
     # ── /login ───────────────────────────────────────────────────────────────
 
     @app_commands.command(name="login", description="YouTube 로그인 (멤버십 다운로드용)")
+    @app_commands.checks.cooldown(1, 120.0, key=lambda i: (i.guild_id, i.user.id))
     async def cmd_login(self, interaction: discord.Interaction):
         gid = str(interaction.guild_id)
         await interaction.response.defer()
@@ -443,8 +506,14 @@ class RelayCog(commands.Cog):
         url="YouTube 채널 URL",
         name="표시 이름",
         filter="제목 키워드 필터 (기본: unarchived)")
+    @app_commands.checks.cooldown(3, 30.0, key=lambda i: (i.guild_id, i.user.id))
     async def _ua_add(self, interaction: discord.Interaction,
                       url: str, name: str = "", filter: str = "unarchived"):
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            await interaction.response.send_message(
+                "❌ 올바르지 않은 URL입니다.", ephemeral=True)
+            return
         gid = str(interaction.guild_id)
         await interaction.response.defer()
         result = await _send_cmd(gid, "unarchived_add",
@@ -453,6 +522,7 @@ class RelayCog(commands.Cog):
 
     @unarchived.command(name="remove", description="채널 감시 해제")
     @app_commands.describe(name="해제할 채널 이름")
+    @app_commands.checks.cooldown(3, 30.0, key=lambda i: (i.guild_id, i.user.id))
     async def _ua_remove(self, interaction: discord.Interaction, name: str):
         gid = str(interaction.guild_id)
         await interaction.response.defer()
@@ -460,6 +530,7 @@ class RelayCog(commands.Cog):
         await interaction.followup.send(result)
 
     @unarchived.command(name="list", description="감시 중인 채널 목록")
+    @app_commands.checks.cooldown(5, 30.0, key=lambda i: (i.guild_id, i.user.id))
     async def _ua_list(self, interaction: discord.Interaction):
         gid = str(interaction.guild_id)
         await interaction.response.defer()
@@ -467,6 +538,7 @@ class RelayCog(commands.Cog):
         await interaction.followup.send(result)
 
     @unarchived.command(name="check", description="즉시 전체 채널 점검")
+    @app_commands.checks.cooldown(3, 60.0, key=lambda i: (i.guild_id, i.user.id))
     async def _ua_check(self, interaction: discord.Interaction):
         gid = str(interaction.guild_id)
         await interaction.response.defer()
@@ -501,6 +573,20 @@ class RelayBot(commands.Bot):
     async def setup_hook(self):
         await self.add_cog(RelayCog(self))
 
+        @self.tree.error
+        async def on_tree_error(interaction: discord.Interaction,
+                                error: app_commands.AppCommandError):
+            if isinstance(error, app_commands.CommandOnCooldown):
+                await interaction.response.send_message(
+                    f"⏱️ 잠시 후 다시 시도하세요. ({error.retry_after:.1f}초 남음)",
+                    ephemeral=True,
+                )
+            else:
+                logger.error("App command error: %s", error)
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "❌ 명령 처리 중 오류가 발생했습니다.", ephemeral=True)
+
 
 # ── 진입점 ───────────────────────────────────────────────────────────────────
 
@@ -513,10 +599,12 @@ async def main():
         ws_handler, "0.0.0.0", WS_PORT,
         ping_interval=30,
         ping_timeout=20,
+        max_size=1_048_576,   # 1 MiB — 대용량 메시지 거부
     )
     logger.info("WebSocket server listening on port %d", WS_PORT)
 
     asyncio.create_task(_heartbeat_loop())
+    asyncio.create_task(_cleanup_loop())
 
     async with bot:
         await bot.start(DISCORD_TOKEN)
