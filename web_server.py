@@ -110,6 +110,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             if path == "/api/channels":
                 self._channels_remove(qs)
+            elif path == "/api/history":
+                self._history_delete(qs)
             else:
                 self.send_error(404)
         except Exception as e:
@@ -262,6 +264,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": str(e)}, 500)
                 return
         self._json({"ok": True, "removed": removed, "kept": len(kept)})
+
+    def _history_delete(self, qs):
+        vid_id = (qs.get("id") or [""])[0].strip()
+        if not vid_id:
+            self._json({"ok": False, "error": "id required"}, 400)
+            return
+        path = config.HISTORY_FILE
+        if not os.path.exists(path):
+            self._json({"ok": False, "error": "not found"}, 404)
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception as e:
+            self._json({"ok": False, "error": str(e)}, 500)
+            return
+        new_history = [e for e in history if e.get("id") != vid_id]
+        if len(new_history) == len(history):
+            self._json({"ok": False, "error": "entry not found"}, 404)
+            return
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(new_history, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, path)
+            _cache["mtime"] = 0
+        except Exception as e:
+            self._json({"ok": False, "error": str(e)}, 500)
+            return
+        self._json({"ok": True})
 
     def _cancel(self, data):
         dm = _dm

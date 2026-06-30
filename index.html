@@ -445,6 +445,10 @@ header{
 .modal-btn.primary:hover{background:var(--accentH)}
 .modal-btn.secondary{background:var(--bg2);color:var(--text2)}
 .modal-btn.secondary:hover{background:var(--bg3)}
+.modal-btn.danger{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
+.modal-btn.danger:hover{background:#fecaca}
+[data-theme="dark"] .modal-btn.danger{background:#450a0a;color:#fca5a5;border-color:#7f1d1d}
+[data-theme="dark"] .modal-btn.danger:hover{background:#7f1d1d}
 
 /* ── 설정 탭 ── */
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:16px}
@@ -1299,7 +1303,8 @@ function openModal(item){
   modalActions.innerHTML=
     '<a class="modal-btn primary" href="'+ytUrl+'" target="_blank">▶ YouTube에서 보기</a>'
     +'<button class="modal-btn secondary" onclick="copyToClip(\''+ytUrl+'\')">🔗 URL 복사</button>'
-    +'<button class="modal-btn secondary" id="modal-redl-btn" onclick="reDownload(\''+ytUrl+'\')">⬇ 다시 다운로드</button>';
+    +'<button class="modal-btn secondary" id="modal-redl-btn" onclick="reDownload(\''+ytUrl+'\')">⬇ 다시 다운로드</button>'
+    +'<button class="modal-btn danger" id="modal-del-btn" onclick="deleteHistoryItem(\''+item.id+'\')">🗑 기록 삭제</button>';
   modalOverlay.classList.add('open');
 }
 function closeModal(){
@@ -1313,6 +1318,16 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape'&&currentMo
 function copyToClip(text){
   if(navigator.clipboard){navigator.clipboard.writeText(text).then(function(){ showToast('URL이 복사되었습니다','ok'); });}
   else{var t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);showToast('URL이 복사되었습니다','ok');}
+}
+function deleteHistoryItem(videoId){
+  if(!confirm('이 항목을 기록에서 삭제하시겠습니까?')) return;
+  var btn=document.getElementById('modal-del-btn');
+  if(btn){ btn.disabled=true; btn.textContent='삭제 중...'; }
+  fetch('/api/history?id='+encodeURIComponent(videoId),{method:'DELETE'})
+    .then(function(r){ return r.json(); }).then(function(d){
+      if(d.ok){ showToast('기록에서 삭제됨','ok'); closeModal(); fetchHistory().catch(function(){}); }
+      else{ showToast(d.error||'삭제 실패','err'); if(btn){ btn.disabled=false; btn.textContent='🗑 기록 삭제'; } }
+    }).catch(function(){ showToast('연결 오류','err'); if(btn){ btn.disabled=false; btn.textContent='🗑 기록 삭제'; } });
 }
 function reDownload(url){
   var btn=document.getElementById('modal-redl-btn');
