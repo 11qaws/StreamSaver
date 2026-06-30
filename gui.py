@@ -25,14 +25,18 @@ class TrayState(Enum):
     UPDATE      = "update"       # 보라  — 업데이트 있음
 
 
+_ANIM_FRAMES   = 4
+_ANIM_INTERVAL = 0.15   # 초 단위 — 프레임 간격
+
+
 # ── 아이콘 이미지 ─────────────────────────────────────────────────────────────
 
-def _make_icon(state: TrayState):
+def _make_icon(state: TrayState, frame: int = 0):
     from PIL import Image, ImageDraw
     S = 64
     img  = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    color = {
+    bg = {
         TrayState.IDLE:        (45,  200,  80),
         TrayState.DOWNLOADING: (40,  140, 220),
         TrayState.WARNING:     (220, 175,   0),
@@ -40,27 +44,47 @@ def _make_icon(state: TrayState):
         TrayState.OFFLINE:     (145, 145, 145),
         TrayState.UPDATE:      (130,  80, 210),
     }[state]
-    draw.ellipse([3, 3, 61, 61], fill=color)
+
+    # 둥근 사각형 배경 (모든 상태 공통 — 형태 동일성)
+    draw.rounded_rectangle([3, 3, 61, 61], radius=12, fill=bg)
+
+    # ▶ 재생 삼각형 — 항상 표시 (앱 정체성)
+    # 우측 뱃지가 있는 상태는 왼쪽으로 이동, 없는 상태는 가운데
     w = "white"
+    has_badge = state not in (TrayState.IDLE, TrayState.OFFLINE)
+    if has_badge:
+        draw.polygon([(13, 16), (13, 48), (38, 32)], fill=w)
+    else:
+        draw.polygon([(18, 14), (18, 50), (48, 32)], fill=w)
+
+    # 오른쪽 뱃지 영역 (x=44~58, y=14~49)
+    f = frame % _ANIM_FRAMES
     if state == TrayState.DOWNLOADING:
-        # 아래 화살표
-        draw.rectangle([27, 16, 37, 36], fill=w)
-        draw.polygon([(18, 34), (32, 50), (46, 34)], fill=w)
+        # ↓ 화살표가 아래로 흘러내림
+        y_positions = [14, 21, 28, 35]
+        alphas      = [255, 185, 110, 45]
+        y = y_positions[f]
+        c = (255, 255, 255, alphas[f])
+        draw.rectangle([49, y,     55, y + 8],  fill=c)
+        draw.polygon([(44, y + 8), (58, y + 8), (51, y + 14)], fill=c)
+
     elif state == TrayState.UPDATE:
-        # 위 화살표
-        draw.rectangle([27, 30, 37, 50], fill=w)
-        draw.polygon([(18, 32), (32, 14), (46, 32)], fill=w)
+        # ↑ 화살표가 위로 솟아오름
+        y_positions = [35, 28, 21, 14]
+        alphas      = [255, 185, 110, 45]
+        y = y_positions[f]
+        c = (255, 255, 255, alphas[f])
+        draw.polygon([(44, y + 6), (58, y + 6), (51, y)], fill=c)
+        draw.rectangle([49, y + 6, 55, y + 14], fill=c)
+
     elif state == TrayState.WARNING:
-        # 느낌표
-        draw.rectangle([28, 16, 36, 38], fill=w)
-        draw.ellipse([28, 44, 36, 52], fill=w)
+        draw.rectangle([49, 16, 55, 36], fill=w)
+        draw.ellipse([49, 42, 55, 48],   fill=w)
+
     elif state == TrayState.ERROR:
-        # X
-        draw.line([18, 18, 46, 46], fill=w, width=7)
-        draw.line([46, 18, 18, 46], fill=w, width=7)
-    elif state == TrayState.OFFLINE:
-        # 빗금
-        draw.line([46, 16, 18, 48], fill=w, width=7)
+        draw.line([43, 18, 59, 42], fill=w, width=5)
+        draw.line([59, 18, 43, 42], fill=w, width=5)
+
     return img
 
 
@@ -118,6 +142,10 @@ class GUIManager:
         self._update_info     = None   # {"version": ..., "url": ...} or None
         self._update_progress = None   # None=대기, int=다운로드 진행률(0~100)
         self._web_ok          = True   # 웹서버 정상 기동 여부
+        self._anim_stop       = threading.Event()
+        self._anim_stop.set()          # 초기값: 정지 상태
+        self._anim_thread     = None
+        self._anim_state      = None   # 현재 애니 중인 TrayState
 
     # ── 상태 계산 ─────────────────────────────────────────────────────────────
 
@@ -135,14 +163,50 @@ class GUIManager:
             return TrayState.UPDATE
         return TrayState.IDLE
 
+    # ── 애니메이션 ────────────────────────────────────────────────────────────
+
+    def _start_anim(self, state: TrayState):
+        """애니메이션 루프 시작 (이전 루프 자동 정지)"""
+        self._anim_stop.set()          # 기존 스레드 종료 신호
+        stop = threading.Event()
+        self._anim_stop  = stop
+        self._anim_state = state
+
+        def _loop():
+            frame = 0
+            while not stop.wait(_ANIM_INTERVAL):
+                frame = (frame + 1) % _ANIM_FRAMES
+                icon  = self._icon
+                if icon and not stop.is_set():
+                    try:
+                        icon.icon = _make_icon(state, frame)
+                    except Exception:
+                        pass
+
+        t = threading.Thread(target=_loop, daemon=True, name="tray-anim")
+        self._anim_thread = t
+        t.start()
+
+    def _stop_anim(self):
+        """애니메이션 루프 정지"""
+        self._anim_stop.set()
+        self._anim_state = None
+
     def _refresh(self):
         """아이콘·툴팁 즉시 갱신"""
         icon = self._icon
         if not icon:
             return
-        s = self._state()
+        s        = self._state()
+        animated = s in (TrayState.DOWNLOADING, TrayState.UPDATE)
         try:
-            icon.icon  = _make_icon(s)
+            if animated:
+                if self._anim_state != s:
+                    self._start_anim(s)
+                # 아이콘 갱신은 애니메이션 스레드가 담당
+            else:
+                self._stop_anim()
+                icon.icon = _make_icon(s)
             icon.title = self._tooltip(s)
         except Exception as e:
             logger.debug("Icon refresh error: %s", e)
@@ -220,6 +284,7 @@ class GUIManager:
             TrayState.WARNING:     "경고",
             TrayState.ERROR:       "오류 발생",
             TrayState.OFFLINE:     "봇 미연결",
+            TrayState.UPDATE:      "업데이트 있음",
         }[state]
         mode_label = "🌐 온라인" if self._mode == "relay" else "💻 로컬"
         lines = [f"StreamSaver  ·  {mode_label}  ·  {label}"]
