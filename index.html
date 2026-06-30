@@ -295,6 +295,13 @@ header{
 @keyframes pulse-bar{0%,100%{opacity:1} 50%{opacity:.5}}
 .loading p{font-size:0.875rem;color:var(--text4)}
 
+/* ── 내보내기 링크 ── */
+.export-link{
+  font-size:0.75rem;padding:2px 8px;border-radius:6px;border:1px solid var(--border);
+  background:var(--bg2);color:var(--text4);text-decoration:none;transition:all .1s ease;white-space:nowrap
+}
+.export-link:hover{border-color:var(--accent);color:var(--accent)}
+
 /* ── 페이지네이션 ── */
 .pagination{
   display:flex;align-items:center;justify-content:space-between;
@@ -671,7 +678,11 @@ header{
     <div id="channel-chips" class="channel-chips"></div>
     <div class="info-bar">
       <span id="result-info"></span>
-      <span id="last-update" style="font-size:0.75rem;color:var(--text4)"></span>
+      <span style="display:flex;gap:8px;align-items:center">
+        <span id="last-update" style="font-size:0.75rem;color:var(--text4)"></span>
+        <a class="export-link" href="/api/export?format=csv" download title="CSV로 내보내기">⬇ CSV</a>
+        <a class="export-link" href="/api/export?format=json" download title="JSON으로 내보내기">⬇ JSON</a>
+      </span>
     </div>
     <div id="loading" class="loading">
       <div class="spinner"></div>
@@ -793,6 +804,7 @@ var chartWrap     = $('#chart-wrap');
 
 var allData       = [];
 var currentPage   = 1;
+var totalPages    = 1;
 var PER_PAGE      = 20;
 var filterTimer   = null;
 var prevActiveCount = 0;
@@ -1061,7 +1073,7 @@ function render(filtered){
   var start=(currentPage-1)*PER_PAGE;
   var pageItems=filtered.slice(start,start+PER_PAGE);
   cardsEl.innerHTML=pageItems.map(function(item,i){ return renderCard(item,i); }).join('');
-  var totalPages=Math.ceil(total/PER_PAGE);
+  totalPages=Math.ceil(total/PER_PAGE)||1;
   resultInfo.textContent=total+'개 중 '+pageItems.length+'개 표시';
   if(totalPages>1){
     paginationEl.style.display='flex';
@@ -1353,6 +1365,12 @@ document.addEventListener('keydown',function(e){
   if(e.key==='/'&&!currentModal&&document.activeElement.tagName!=='INPUT'){
     e.preventDefault();
     searchInput.focus();
+  }
+  // 좌우 방향키로 페이지 이동 (입력 필드, 모달 외부에서)
+  var activeEl=document.activeElement.tagName;
+  if(!currentModal&&activeEl!=='INPUT'&&activeEl!=='TEXTAREA'&&activeEl!=='SELECT'){
+    if(e.key==='ArrowRight'&&currentPage<totalPages){ currentPage++; render(applyFilters(allData)); }
+    if(e.key==='ArrowLeft'&&currentPage>1){ currentPage--; render(applyFilters(allData)); }
   }
 });
 
