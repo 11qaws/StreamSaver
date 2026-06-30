@@ -3,6 +3,7 @@ import logging
 import os
 import tempfile
 import threading
+import time
 import urllib.request
 from typing import Callable, Optional
 from urllib.error import URLError
