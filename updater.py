@@ -75,6 +75,20 @@ def check_update_async(callback):
     threading.Thread(target=_run, daemon=True, name="updater").start()
 
 
+def check_update_loop(callback, interval: int = 21600):
+    """interval 초마다 주기적으로 체크 (기본 6시간). 새 버전 발견 시 callback 호출."""
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                info = check_update()
+                if info:
+                    callback(info)
+            except Exception as e:
+                logger.debug("Periodic update check error: %s", e)
+    threading.Thread(target=_loop, daemon=True, name="updater-loop").start()
+
+
 def download_update(url: str, progress_cb: Optional[Callable[[int], None]] = None) -> str:
     """
     새 인스톨러를 임시 폴더에 다운로드하고 경로를 반환.

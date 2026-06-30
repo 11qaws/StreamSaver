@@ -214,15 +214,17 @@ def main():
     ctx.gui.ctx = ctx
     ctx.gui.start_tray()
 
-    updater.check_update_async(
-        lambda info: ctx.gui.set_update_available(info) if info else None
-    )
+    _upd_cb = lambda info: ctx.gui.set_update_available(info) if info else None
+    updater.check_update_async(_upd_cb)
+    updater.check_update_loop(_upd_cb)
 
     try:
         start_web(ctx)
+        ctx.gui.set_web_ok(True)
     except Exception as e:
         logger.error("Web server failed to start: %s", e)
         ctx.gui.add_error("web_server", "웹서버 시작 실패")
+        ctx.gui.set_web_ok(False)
 
     def _gui_dl_watcher(event, task, **kw):
         if event == "completed":

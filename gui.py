@@ -22,6 +22,7 @@ class TrayState(Enum):
     WARNING     = "warning"      # 노랑  — 쿠키 만료 임박 등
     ERROR       = "error"        # 빨강  — 오류
     OFFLINE     = "offline"      # 회색  — Discord 미연결
+    UPDATE      = "update"       # 보라  — 업데이트 있음
 
 
 # ── 아이콘 이미지 ─────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ def _make_icon(state: TrayState):
         TrayState.WARNING:     (220, 175,   0),
         TrayState.ERROR:       (210,  50,  50),
         TrayState.OFFLINE:     (145, 145, 145),
+        TrayState.UPDATE:      (130,  80, 210),
     }[state]
     draw.ellipse([3, 3, 61, 61], fill=color)
     w = "white"
@@ -44,6 +46,10 @@ def _make_icon(state: TrayState):
         # 아래 화살표
         draw.rectangle([27, 16, 37, 36], fill=w)
         draw.polygon([(18, 34), (32, 50), (46, 34)], fill=w)
+    elif state == TrayState.UPDATE:
+        # 위 화살표
+        draw.rectangle([27, 30, 37, 50], fill=w)
+        draw.polygon([(18, 32), (32, 14), (46, 32)], fill=w)
     elif state == TrayState.WARNING:
         # 느낌표
         draw.rectangle([28, 16, 36, 38], fill=w)
@@ -111,6 +117,7 @@ class GUIManager:
         self._mode            = "relay" if config.RELAY_SERVER_URL else "local"
         self._update_info     = None   # {"version": ..., "url": ...} or None
         self._update_progress = None   # None=대기, int=다운로드 진행률(0~100)
+        self._web_ok          = True   # 웹서버 정상 기동 여부
 
     # ── 상태 계산 ─────────────────────────────────────────────────────────────
 
@@ -124,6 +131,8 @@ class GUIManager:
                 return TrayState.DOWNLOADING
             if self._warnings:
                 return TrayState.WARNING
+        if self._update_info and self._update_progress is None:
+            return TrayState.UPDATE
         return TrayState.IDLE
 
     def _refresh(self):
@@ -147,6 +156,10 @@ class GUIManager:
 
     def set_bot_connected(self, connected: bool):
         self._bot_connected = connected
+        self._refresh()
+
+    def set_web_ok(self, ok: bool):
+        self._web_ok = ok
         self._refresh()
 
     def set_update_available(self, info: dict):
@@ -307,31 +320,37 @@ class GUIManager:
         if self._mode == "relay":
             if rc and rc.connected:
                 mode_txt = "🌐 온라인 모드  —  연결됨"
+            elif rc and rc.guild_id:
+                mode_txt = "🔄 온라인 모드  —  재연결 중..."
             else:
-                mode_txt = "🔄 온라인 모드  —  접속 시도 중..."
+                mode_txt = "🔌 온라인 모드  —  연결 필요"
         else:
             mode_txt = "💻 로컬 모드" + ("  —  연결됨" if self._bot_connected else "  —  미연결")
         yield pystray.MenuItem(mode_txt, None, enabled=False)
+
         if self._mode == "relay" and not (rc and rc.connected):
-            invite_url = getattr(config, "BOT_INVITE_URL", "")
-            if invite_url:
-                yield pystray.MenuItem(
-                    "🤖 1단계: Discord 봇 서버 초대",
-                    lambda icon, item: self._open_url(invite_url),
-                )
-            yield pystray.MenuItem("🔗 2단계: 서버 연결", self._connect_server)
+            if not (rc and rc.guild_id):
+                # 첫 설치 또는 리셋 — 봇 초대 + 서버 연결 모두 표시
+                invite_url = getattr(config, "BOT_INVITE_URL", "")
+                if invite_url:
+                    yield pystray.MenuItem(
+                        "🤖 1단계: Discord 봇 서버 초대",
+                        lambda icon, item: self._open_url(invite_url),
+                    )
+                yield pystray.MenuItem("🔗 2단계: 서버 연결", self._connect_server)
+            # guild_id 있으면 자동 재연결 중 — 버튼 없음
         yield pystray.Menu.SEPARATOR
 
         # ② 주요 액션
         yield pystray.MenuItem(
-            "📊 대시보드 열기",
+            "📊 대시보드 열기" if self._web_ok else "📊 대시보드 (시작 실패)",
             lambda icon, item: webbrowser.open(f"http://localhost:{config.WEB_PORT}"),
             default=True,
+            enabled=self._web_ok,
         )
         yield pystray.MenuItem(
             "📂 다운로드 폴더",
-            lambda icon, item: subprocess.Popen(
-                ["explorer", config.DOWNLOAD_DIR], creationflags=_NW),
+            lambda icon, item: self._open_download_folder(),
         )
         yield pystray.Menu.SEPARATOR
 
@@ -533,6 +552,10 @@ class GUIManager:
     def _open_url(self, url: str):
         import webbrowser
         webbrowser.open(url)
+
+    def _open_download_folder(self):
+        os.makedirs(config.DOWNLOAD_DIR, exist_ok=True)
+        subprocess.Popen(["explorer", config.DOWNLOAD_DIR], creationflags=_NW)
 
     def _cancel_task(self, task_id: int):
         dm = self.ctx.dm if self.ctx else None
