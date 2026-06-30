@@ -413,6 +413,8 @@ header{
 .modal-btn:hover{background:var(--bg3);text-decoration:none}
 .modal-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .modal-btn.primary:hover{background:var(--accentH)}
+.modal-btn.secondary{background:var(--bg2);color:var(--text2)}
+.modal-btn.secondary:hover{background:var(--bg3)}
 
 /* ── 설정 탭 ── */
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:16px}
@@ -430,6 +432,16 @@ header{
 .setting-path{font-family:monospace;font-size:0.875rem;font-weight:400}
 .setting-bar-wrap{height:4px;background:var(--border);border-radius:4px;margin-top:8px;overflow:hidden}
 .setting-bar{height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
+
+/* ── 채널 필터 칩 ── */
+.channel-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.chip{
+  padding:4px 12px;border-radius:20px;font-size:0.8125rem;font-weight:500;
+  border:1px solid var(--border);background:var(--bg2);color:var(--text3);
+  cursor:pointer;transition:all .15s ease;white-space:nowrap
+}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* ── 대기 중 목록 ── */
 .queue-section{margin-top:8px}
@@ -644,6 +656,7 @@ header{
         <input type="checkbox" id="membership-filter"> 멤버십만
       </label>
     </div>
+    <div id="channel-chips" class="channel-chips"></div>
     <div class="info-bar">
       <span id="result-info"></span>
       <span id="last-update" style="font-size:0.75rem;color:var(--text4)"></span>
@@ -972,6 +985,15 @@ function updateChannelFilter(){
     if(ch.name===cur) o.selected=true;
     channelFilter.appendChild(o);
   });
+  // 채널 칩 업데이트 (상위 8개)
+  var chipsEl=document.getElementById('channel-chips');
+  var topN=list.slice(0,8);
+  if(topN.length===0){ chipsEl.innerHTML=''; return; }
+  var html='<button class="chip'+(cur===''?' active':'')+'" data-ch="">전체</button>';
+  topN.forEach(function(ch){
+    html+='<button class="chip'+(cur===ch.name?' active':'')+'" data-ch="'+ch.name+'">'+ch.name+' <small>'+ch.count+'</small></button>';
+  });
+  chipsEl.innerHTML=html;
 }
 
 /* ── 카드 렌더 ── */
@@ -1148,7 +1170,13 @@ searchInput.addEventListener('input',function(){
   clearTimeout(filterTimer);
   filterTimer=setTimeout(function(){ currentPage=1; render(applyFilters(allData)); },300);
 });
-channelFilter.addEventListener('change',function(){ currentPage=1; render(applyFilters(allData)); });
+channelFilter.addEventListener('change',function(){ currentPage=1; render(applyFilters(allData)); updateChannelFilter(); });
+document.getElementById('channel-chips').addEventListener('click',function(e){
+  var btn=e.target.closest('.chip');
+  if(!btn) return;
+  channelFilter.value=btn.dataset.ch||'';
+  currentPage=1; render(applyFilters(allData)); updateChannelFilter();
+});
 sortSelect.addEventListener('change',function(){ currentPage=1; render(applyFilters(allData)); });
 membershipCheck.addEventListener('change',function(){
   membershipLabel.classList.toggle('active',membershipCheck.checked);
@@ -1198,7 +1226,9 @@ function openModal(item){
     return '<div class="modal-row"><span class="m-key">'+r[0]+'</span><span class="m-val">'+r[1]+'</span></div>';
   }).join('');
   var ytUrl='https://www.youtube.com/watch?v='+item.id;
-  modalActions.innerHTML='<a class="modal-btn primary" href="'+ytUrl+'" target="_blank">▶ YouTube에서 보기</a>';
+  modalActions.innerHTML=
+    '<a class="modal-btn primary" href="'+ytUrl+'" target="_blank">▶ YouTube에서 보기</a>'
+    +'<button class="modal-btn secondary" onclick="copyToClip(\''+ytUrl+'\')">🔗 URL 복사</button>';
   modalOverlay.classList.add('open');
 }
 function closeModal(){
@@ -1208,6 +1238,11 @@ function closeModal(){
 modalClose.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', function(e){ if(e.target===modalOverlay) closeModal(); });
 document.addEventListener('keydown', function(e){ if(e.key==='Escape'&&currentModal) closeModal(); });
+
+function copyToClip(text){
+  if(navigator.clipboard){navigator.clipboard.writeText(text).then(function(){ showToast('URL이 복사되었습니다','ok'); });}
+  else{var t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);showToast('URL이 복사되었습니다','ok');}
+}
 
 /* ── 업데이트 확인 ── */
 var updateBanner = document.getElementById('update-banner');
