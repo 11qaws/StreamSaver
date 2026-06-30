@@ -53,7 +53,7 @@ def check_update() -> Optional[dict]:
         if not download_url:
             download_url = data.get("html_url", "")
 
-        notes = (data.get("body") or "").strip()[:200]
+        notes = (data.get("body") or "").strip()
         logger.info("Update available: %s → %s", config.APP_VERSION, latest_tag)
         return {
             "version":  latest_tag.lstrip("v"),
@@ -68,9 +68,12 @@ def check_update() -> Optional[dict]:
     return None
 
 
-def check_update_async(callback):
-    """백그라운드 스레드에서 체크 후 결과를 callback(info_or_none) 으로 전달"""
+def check_update_async(callback, delay: float = 0):
+    """백그라운드 스레드에서 체크 후 결과를 callback(info_or_none) 으로 전달.
+    delay > 0 이면 해당 초만큼 대기 후 체크 (앱 시작 부하 분산용)."""
     def _run():
+        if delay > 0:
+            time.sleep(delay)
         info = check_update()
         callback(info)
     threading.Thread(target=_run, daemon=True, name="updater").start()

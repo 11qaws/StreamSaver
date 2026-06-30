@@ -396,7 +396,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             filtered = list(sorted(filtered, key=lambda x: x.get("file_size", 0)))
 
         page = max(1, int((qs.get("page") or ["1"])[0]))
-        per_page = max(1, min(100, int((qs.get("per_page") or ["20"])[0])))
+        per_page = max(1, min(5000, int((qs.get("per_page") or ["20"])[0])))
         total = len(filtered)
         start = (page - 1) * per_page
         end = start + per_page

@@ -239,7 +239,7 @@ def main():
     ctx.gui.start_tray()
 
     _upd_cb = lambda info: ctx.gui.set_update_available(info) if info else None
-    updater.check_update_async(_upd_cb)
+    updater.check_update_async(_upd_cb, delay=30)
     updater.check_update_loop(_upd_cb)
 
     try:

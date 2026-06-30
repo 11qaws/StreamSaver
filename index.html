@@ -998,7 +998,7 @@ function renderChart(all){
 
 /* ── 기록 로드 ── */
 function fetchHistory(){
-  return fetch('/api/history').then(function(r){
+  return fetch('/api/history?per_page=5000').then(function(r){
     if(!r.ok) throw new Error('fail');
     return r.json();
   }).then(function(data){
@@ -1267,7 +1267,7 @@ function updateStatsSummary(all){
   statsSummary.style.display='flex';
   var mem=all.filter(function(e){ return e.is_membership; }).length;
   var channels={};
-  var todayStr=new Date().toISOString().slice(0,10); // YYYY-MM-DD
+  var _n=new Date(); var todayStr=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(_n.getDate()).padStart(2,'0');
   var todayCount=all.filter(function(e){ return (e.downloaded_at||'').startsWith(todayStr); }).length;
   all.forEach(function(e){ channels[e.channel||'Unknown']=true; });
   setText('ss-total', all.length+'개');

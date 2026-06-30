@@ -143,8 +143,11 @@ class GUIManager:
         self._completed       = 0
         self._failed          = 0
         self._mode            = "relay" if config.RELAY_SERVER_URL else "local"
-        self._update_info     = None   # {"version": ..., "url": ...} or None
-        self._update_progress  = None   # None=대기, int=다운로드 진행률(0~100)
+        self._update_info      = None   # {"version": ..., "url": ...} or None
+        self._update_progress  = None   # None=대기/완료, int=다운로드 진행률(0~100)
+        self._installer_path   = None   # 다운로드 완료된 인스톨러 경로
+        self._update_dl_lock   = threading.Lock()   # 중복 다운로드 방지
+        self._install_dlg_open = False              # 설치 다이얼로그 중복 열기 방지
         self._web_ok           = True   # 웹서버 정상 기동 여부
         self._unarchived_open  = False  # 관리 창 중복 열기 방지
         self._anim_stop       = threading.Event()
@@ -233,9 +236,12 @@ class GUIManager:
 
     def set_update_available(self, info: dict):
         self._update_info = info
-        self.notify("StreamSaver 업데이트",
-                    f"v{info['version']} 업데이트가 있습니다. 트레이 메뉴에서 확인하세요.")
         self._refresh()
+        self.notify("StreamSaver 업데이트",
+                    f"v{info['version']} 업데이트 발견 — 백그라운드에서 다운로드합니다.")
+        # 사용자 액션 없이 즉시 백그라운드 다운로드 시작
+        threading.Thread(target=self._run_auto_update, daemon=True,
+                         name="AutoUpdater").start()
 
     def set_downloading(self, count: int):
         self._active_dl = max(0, count)
@@ -475,12 +481,16 @@ class GUIManager:
             v = self._update_info["version"]
             if self._update_progress is not None:
                 pct = self._update_progress
-                label = (f"⏳ 설치 중..." if pct >= 100
-                         else f"⬇️ 업데이트 다운로드 중 ({pct}%)")
+                label = f"⬇️ 업데이트 다운로드 중 ({pct}%)"
                 yield pystray.MenuItem(label, None, enabled=False)
+            elif self._installer_path:
+                yield pystray.MenuItem(
+                    f"✅ v{v} 설치 준비됨  —  지금 설치",
+                    self._confirm_and_install,
+                )
             else:
                 yield pystray.MenuItem(
-                    f"⬆️ v{v} 업데이트",
+                    f"⬆️ v{v} 업데이트 있음 (다운로드 재시도)",
                     self._start_auto_update,
                 )
         yield pystray.MenuItem(
@@ -1018,9 +1028,10 @@ class GUIManager:
         else:
             self.notify("StreamSaver", f"#{task_id} 취소 불가 — 이미 완료됐거나 없는 작업입니다.")
 
-    def _start_auto_update(self, icon, item=None):
-        if self._update_progress is not None:
-            return  # 이미 진행 중
+    def _start_auto_update(self, icon=None, item=None):
+        """다운로드 실패 후 재시도 또는 수동 트리거"""
+        if self._update_progress is not None or self._installer_path:
+            return
         threading.Thread(target=self._run_auto_update, daemon=True,
                          name="AutoUpdater").start()
 
@@ -1029,26 +1040,189 @@ class GUIManager:
         info = self._update_info
         if not info:
             return
+        with self._update_dl_lock:
+            if self._update_progress is not None or self._installer_path:
+                return  # 이미 진행 중이거나 완료됨
+            self._update_progress = 0  # Lock 안에서 선점
+
         url = info["url"]
+        _last_pct = [0]
 
         def on_progress(pct: int):
             self._update_progress = pct
-            self._refresh()
+            if pct - _last_pct[0] >= 10 or pct == 100:
+                _last_pct[0] = pct
+                self._refresh()
 
         try:
-            self._update_progress = 0
             self._refresh()
             installer_path = updater.download_update(url, on_progress)
-            self._update_progress = 100
-            self._refresh()
-            self.notify("StreamSaver", "업데이트를 설치합니다. 잠시 후 재시작됩니다.")
-            updater.install_update(installer_path)
-            # 인스톨러가 이 프로세스를 종료하고 새 버전을 실행함
-        except Exception as e:
-            logger.error("Auto-update failed: %s", e)
+            self._installer_path = installer_path
             self._update_progress = None
-            self.notify("StreamSaver", f"업데이트 실패: {e}")
             self._refresh()
+            v = info["version"]
+            self.notify("StreamSaver 업데이트 준비됨",
+                        f"v{v} 다운로드 완료 — 트레이 메뉴에서 지금 설치하세요.")
+        except Exception as e:
+            logger.error("Auto-update download failed: %s", e)
+            self._update_progress = None
+            self._refresh()
+            self.notify("StreamSaver", f"업데이트 다운로드 실패: {e}")
+
+    def _confirm_and_install(self, icon=None, item=None):
+        """다운로드 완료 후 확인 다이얼로그를 띄우고 설치"""
+        if not self._installer_path or self._install_dlg_open:
+            return
+        self._install_dlg_open = True
+        def _run():
+            try:
+                self._show_install_dialog()
+            except Exception as e:
+                logger.error("Install dialog error: %s", e, exc_info=True)
+            finally:
+                self._install_dlg_open = False
+        threading.Thread(target=_run, daemon=True, name="InstallDialog").start()
+
+    def _show_install_dialog(self):
+        import os
+        import tkinter as tk
+        from PIL import ImageTk
+
+        info = self._update_info or {}
+        v    = info.get("version", "?")
+        notes = (info.get("notes") or "").strip()
+
+        BG      = "#ffffff"
+        HEADER  = "#6d28d9"   # 보라 — UPDATE 상태 색과 일치
+        PRIMARY = "#6d28d9"
+        P_HOV   = "#5b21b6"
+        SEC     = "#f3f4f6"
+        S_HOV   = "#e5e7eb"
+        TEXT    = "#111827"
+        SUB     = "#6b7280"
+        BORDER  = "#e5e7eb"
+
+        root = tk.Tk()
+        root.withdraw()
+
+        dlg = tk.Toplevel(root)
+        dlg.title(f"StreamSaver v{v} 업데이트")
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.attributes("-topmost", True)
+        dlg.grab_set()
+
+        W, H = 400, 340 + min(len(notes.splitlines()), 8) * 18
+        H = min(H, 520)
+        sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
+        dlg.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
+
+        result = {"install": False}
+
+        def _install(e=None):
+            result["install"] = True
+            dlg.destroy()
+
+        def _cancel(e=None):
+            dlg.destroy()
+
+        dlg.protocol("WM_DELETE_WINDOW", _cancel)
+
+        # 헤더
+        hdr = tk.Frame(dlg, bg=HEADER, height=76)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+
+        icon_pil   = _make_icon(TrayState.UPDATE).resize((44, 44))
+        icon_photo = ImageTk.PhotoImage(icon_pil)
+        ico_lbl = tk.Label(hdr, image=icon_photo, bg=HEADER)
+        ico_lbl.image = icon_photo
+        ico_lbl.pack(side="left", padx=(20, 12), pady=16)
+
+        hdr_text = tk.Frame(hdr, bg=HEADER)
+        hdr_text.pack(side="left")
+        tk.Label(hdr_text, text="StreamSaver",
+                 font=("Segoe UI", 13, "bold"), bg=HEADER, fg="white").pack(anchor="w")
+        tk.Label(hdr_text, text=f"v{v} 업데이트 준비됨",
+                 font=("Segoe UI", 9), bg=HEADER, fg="#e9d5ff").pack(anchor="w")
+
+        # 본문
+        body = tk.Frame(dlg, bg=BG, padx=24, pady=16)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(body,
+                 text=f"v{v}(으)로 업데이트하시겠습니까?\n앱이 종료된 후 자동으로 재시작됩니다.",
+                 font=("Segoe UI", 10), bg=BG, fg=TEXT,
+                 wraplength=350, justify="left").pack(anchor="w", pady=(0, 12))
+
+        if notes:
+            tk.Label(body, text="릴리즈 노트",
+                     font=("Segoe UI", 9, "bold"), bg=BG, fg=SUB).pack(anchor="w")
+            note_frame = tk.Frame(body, bg="#f9fafb", pady=8, padx=10,
+                                  highlightthickness=1,
+                                  highlightbackground=BORDER)
+            note_frame.pack(fill="x", pady=(4, 0))
+
+            sb = tk.Scrollbar(note_frame, orient="vertical")
+            sb.pack(side="right", fill="y")
+            txt = tk.Text(note_frame, font=("Segoe UI", 9), bg="#f9fafb", fg=SUB,
+                          relief="flat", bd=0, wrap="word",
+                          height=min(len(notes.splitlines()) + 1, 8),
+                          yscrollcommand=sb.set, state="normal")
+            txt.insert("1.0", notes)
+            txt.configure(state="disabled")
+            txt.pack(fill="x")
+            sb.config(command=txt.yview)
+
+        # 하단 버튼
+        def _btn_hover(f, l, bg, hbg, on):
+            c = hbg if on else bg
+            f.configure(bg=c)
+            l.configure(bg=c)
+
+        tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x")
+        foot = tk.Frame(dlg, bg=BG, padx=24, pady=12)
+        foot.pack(fill="x")
+
+        can_f = tk.Frame(foot, bg=SEC, pady=9, padx=20)
+        can_f.pack(side="right", padx=(8, 0))
+        can_l = tk.Label(can_f, text="나중에", font=("Segoe UI", 10),
+                         bg=SEC, fg=TEXT, cursor="hand2")
+        can_l.pack()
+        for w in (can_f, can_l):
+            w.bind("<Button-1>", _cancel)
+            w.bind("<Enter>", lambda e: _btn_hover(can_f, can_l, SEC, S_HOV, True))
+            w.bind("<Leave>", lambda e: _btn_hover(can_f, can_l, SEC, S_HOV, False))
+
+        ins_f = tk.Frame(foot, bg=PRIMARY, pady=9, padx=20)
+        ins_f.pack(side="right")
+        ins_l = tk.Label(ins_f, text="지금 설치", font=("Segoe UI", 10, "bold"),
+                         bg=PRIMARY, fg="white", cursor="hand2")
+        ins_l.pack()
+        for w in (ins_f, ins_l):
+            w.bind("<Button-1>", _install)
+            w.bind("<Enter>", lambda e: _btn_hover(ins_f, ins_l, PRIMARY, P_HOV, True))
+            w.bind("<Leave>", lambda e: _btn_hover(ins_f, ins_l, PRIMARY, P_HOV, False))
+
+        dlg.bind("<Return>", _install)
+        dlg.bind("<Escape>", _cancel)
+
+        root.wait_window(dlg)
+        root.destroy()
+
+        if result["install"]:
+            installer = self._installer_path
+            if installer and os.path.exists(installer):
+                try:
+                    import updater
+                    updater.install_update(installer)
+                except Exception as e:
+                    logger.error("Install failed: %s", e)
+                    self.notify("StreamSaver", f"설치 실패: {e}")
+            else:
+                self.notify("StreamSaver", "설치 파일을 찾을 수 없습니다. 다시 시도해 주세요.")
+                self._installer_path = None
+                self._refresh()
 
     def _on_quit(self, icon, item=None):
         logger.info("Tray: quit")
