@@ -262,6 +262,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({"ok": False, "error": str(e)}, 500)
             return
         def _file_exists(e):
+            if e.get("kept_local") is False:
+                return True  # Drive 업로드 후 삭제된 파일 — 기록은 유지
             fp = e.get("file_path", "")
             if fp:
                 return os.path.exists(fp)

@@ -1037,7 +1037,7 @@ function renderChart(all){
     var label=ch.name.length>18?ch.name.slice(0,16)+'…':ch.name;
     svg+='<rect x="'+pad.l+'" y="'+y+'" width="'+barW+'" height="'+barH+'" rx="4" class="chart-bar-bg"/>';
     svg+='<rect x="'+pad.l+'" y="'+y+'" width="'+fillW+'" height="'+barH+'" rx="4" class="chart-bar-fill"/>';
-    svg+='<text x="'+(pad.l-8)+'" y="'+(y+barH/2+1)+'" text-anchor="end" dominant-baseline="middle" class="chart-label">'+label+'</text>';
+    svg+='<text x="'+(pad.l-8)+'" y="'+(y+barH/2+1)+'" text-anchor="end" dominant-baseline="middle" class="chart-label">'+esc(label)+'</text>';
     svg+='<text x="'+(pad.l+fillW+6)+'" y="'+(y+barH/2+1)+'" dominant-baseline="middle" class="chart-val">'+ch.count+'개</text>';
   });
   svg+='</svg>';
@@ -1117,7 +1117,7 @@ function updateChannelFilter(){
   if(topN.length===0){ chipsEl.innerHTML=''; return; }
   var html='<button class="chip'+(cur===''?' active':'')+'" data-ch="">전체</button>';
   topN.forEach(function(ch){
-    html+='<button class="chip'+(cur===ch.name?' active':'')+'" data-ch="'+ch.name+'">'+ch.name+' <small>'+ch.count+'</small></button>';
+    html+='<button class="chip'+(cur===ch.name?' active':'')+'" data-ch="'+esc(ch.name)+'">'+esc(ch.name)+' <small>'+ch.count+'</small></button>';
   });
   chipsEl.innerHTML=html;
 }
@@ -1290,11 +1290,11 @@ function loadChannels(){
       html+='<div class="ch-row">'
         +'<div class="ch-icon">📺</div>'
         +'<div class="ch-info">'
-        +'<div class="ch-name">'+(ch.name||ch.handle||ch.url)+'</div>'
-        +'<div class="ch-handle">'+ch.url+'</div>'
-        +(ch.title_filter?'<div class="ch-filter-tag">필터: '+ch.title_filter+'</div>':'')
+        +'<div class="ch-name">'+esc(ch.name||ch.handle||ch.url)+'</div>'
+        +'<div class="ch-handle">'+esc(ch.url)+'</div>'
+        +(ch.title_filter?'<div class="ch-filter-tag">필터: '+esc(ch.title_filter)+'</div>':'')
         +'</div>'
-        +'<button class="btn-remove" data-url="'+ch.url.replace(/"/g,'&quot;')+'">삭제</button>'
+        +'<button class="btn-remove" data-url="'+esc(ch.url)+'">삭제</button>'
         +'</div>';
     });
     chListEl.innerHTML=html;
