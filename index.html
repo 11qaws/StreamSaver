@@ -1920,18 +1920,20 @@ function _updateBulkCount(){
 function openBulkModal(){
   var o=document.getElementById('bulk-overlay');
   if(!o) return;
-  if(bulkTextarea) bulkTextarea.value='';
+  if(bulkTextarea){ bulkTextarea.value=''; bulkTextarea.disabled=false; }
   if(bulkProgressEl) bulkProgressEl.style.display='none';
   if(bulkSubmitBtn){ bulkSubmitBtn.disabled=true; bulkSubmitBtn.textContent='추가'; }
   if(bulkCount) bulkCount.innerHTML='';
   o.style.display='flex';
-  void o.offsetWidth;  // reflow 강제 — CSS transition 트리거
+  void o.offsetWidth;
   o.classList.add('open');
   setTimeout(function(){ if(bulkTextarea) bulkTextarea.focus(); },50);
 }
 function closeBulkModal(){
   var o=document.getElementById('bulk-overlay');
   if(!o) return;
+  // 진행 중 취소 시 textarea 복구
+  if(bulkTextarea) bulkTextarea.disabled=false;
   o.classList.remove('open');
   setTimeout(function(){ if(!o.classList.contains('open')) o.style.display='none'; },160);
 }
