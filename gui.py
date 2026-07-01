@@ -37,7 +37,7 @@ def _make_icon(state: TrayState, frame: int = 0):
     img  = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     bg = {
-        TrayState.IDLE:        (45,  200,  80),
+        TrayState.IDLE:        (37,   99, 235),   # 대시보드 accent #2563EB
         TrayState.DOWNLOADING: (40,  140, 220),
         TrayState.WARNING:     (220, 175,   0),
         TrayState.ERROR:       (210,  50,  50),
