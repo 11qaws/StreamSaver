@@ -826,6 +826,7 @@ var $ = function(s){ return document.querySelector(s); };
 var searchInput   = $('#search');
 var channelFilter = $('#channel-filter');
 var sortSelect    = $('#sort');
+if(sortSelect){ var _savedSort=localStorage.getItem('ss-sort'); if(_savedSort) sortSelect.value=_savedSort; }
 var periodSelect  = $('#period-filter');
 var membershipCheck = $('#membership-filter');
 var membershipLabel = $('#membership-label');
@@ -846,10 +847,11 @@ var chartWrap     = $('#chart-wrap');
 var allData       = [];
 var currentPage   = 1;
 var totalPages    = 1;
-var PER_PAGE      = 20;
+var PER_PAGE      = parseInt(localStorage.getItem('ss-per-page')||'20')||20;
 var filterTimer   = null;
 var prevActiveCount = 0;
 var perPageSelectEl = document.getElementById('per-page-select');
+if(perPageSelectEl&&PER_PAGE!==20){ perPageSelectEl.value=String(PER_PAGE); }
 
 /* ── 유틸 ── */
 function fmtSize(bytes){
@@ -1327,7 +1329,7 @@ document.getElementById('channel-chips').addEventListener('click',function(e){
   channelFilter.value=btn.dataset.ch||'';
   currentPage=1; render(applyFilters(allData)); updateChannelFilter();
 });
-sortSelect.addEventListener('change',function(){ currentPage=1; render(applyFilters(allData)); });
+sortSelect.addEventListener('change',function(){ localStorage.setItem('ss-sort',sortSelect.value); currentPage=1; render(applyFilters(allData)); });
 periodSelect.addEventListener('change',function(){ currentPage=1; _syncPeriodCard(); render(applyFilters(allData)); });
 
 /* ── 기간 필터 ── */
@@ -1352,6 +1354,7 @@ membershipCheck.addEventListener('change',function(){
 if(perPageSelectEl){
   perPageSelectEl.addEventListener('change',function(){
     PER_PAGE=parseInt(perPageSelectEl.value)||20;
+    localStorage.setItem('ss-per-page',String(PER_PAGE));
     currentPage=1; render(applyFilters(allData));
   });
 }
