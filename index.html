@@ -1242,6 +1242,14 @@ function loadSettings(){
       +'<div class="setting-card"><div class="setting-label">버전</div><div class="setting-value" style="display:flex;align-items:center;gap:8px">v'+d.version
         +'<button id="btn-check-update" style="font-size:0.75rem;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text3);cursor:pointer">업데이트 확인</button>'
         +'</div></div>'
+      +(function(){
+          var days=d.cookie_days_remaining;
+          var label='쿠키 유효기간';
+          if(!d.cookie_valid) return '<div class="setting-card"><div class="setting-label">'+label+'</div><div class="setting-value" style="color:#ef4444">인증 만료</div></div>';
+          if(days===null||days===undefined) return '<div class="setting-card"><div class="setting-label">'+label+'</div><div class="setting-value" style="color:var(--text3)">세션 쿠키</div></div>';
+          var col=days<=7?'#ef4444':days<=14?'#f59e0b':'#22c55e';
+          return '<div class="setting-card"><div class="setting-label">'+label+'</div><div class="setting-value" style="color:'+col+'">'+days+'일 남음</div></div>';
+        })()
       +'<div class="setting-card"><div class="setting-label">최대 동시 다운로드</div><div class="setting-value">'+d.max_parallel+'개</div></div>'
       +'<div class="setting-card"><div class="setting-label">채널 감시 주기</div><div class="setting-value">'+Math.round(d.watch_poll_interval/60)+'분</div></div>'
       +'<div class="setting-card"><div class="setting-label">디스크 사용</div><div class="setting-value">'+(d.disk_total_gb-d.disk_free_gb).toFixed(1)+' / '+d.disk_total_gb+' GB ('+diskPct+'%)</div>'
@@ -1674,6 +1682,12 @@ document.addEventListener('keydown',function(e){
     e.preventDefault();
     searchInput.focus();
   }
+  if(e.key==='r'&&!e.ctrlKey&&!e.metaKey&&!currentModal&&document.activeElement.tagName!=='INPUT'){
+    e.preventDefault();
+    if(refreshBtn){ refreshBtn.classList.add('spin'); setTimeout(function(){ refreshBtn.classList.remove('spin'); },600); }
+    pollStatus(); fetchHistory().catch(function(){});
+  }
+  if(e.key==='Escape'&&!currentModal&&_isFiltered&&_isFiltered()){ resetAllFilters&&resetAllFilters(); }
   // 좌우 방향키로 페이지 이동 (입력 필드, 모달 외부에서)
   var activeEl=document.activeElement.tagName;
   if(!currentModal&&activeEl!=='INPUT'&&activeEl!=='TEXTAREA'&&activeEl!=='SELECT'){

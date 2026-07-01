@@ -189,14 +189,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception:
             disk_free_gb = 0
             disk_total_gb = 0
+        cm = _cm
+        cs = cm.get_status() if cm else {}
         self._json({
-            "version":             config.APP_VERSION,
-            "download_dir":        config.DOWNLOAD_DIR,
-            "max_parallel":        config.MAX_PARALLEL,
-            "watch_poll_interval": config.WATCH_POLL_INTERVAL,
-            "disk_free_gb":        disk_free_gb,
-            "disk_total_gb":       disk_total_gb,
-            "repo":                config.GITHUB_REPO,
+            "version":                config.APP_VERSION,
+            "download_dir":           config.DOWNLOAD_DIR,
+            "max_parallel":           config.MAX_PARALLEL,
+            "watch_poll_interval":    config.WATCH_POLL_INTERVAL,
+            "disk_free_gb":           disk_free_gb,
+            "disk_total_gb":          disk_total_gb,
+            "repo":                   config.GITHUB_REPO,
+            "cookie_valid":           cs.get("cookie_valid", False),
+            "cookie_days_remaining":  cs.get("cookie_days_remaining"),
         })
 
     def _export(self, qs):

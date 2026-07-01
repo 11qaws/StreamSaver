@@ -786,11 +786,13 @@ class CookieManager:
     def get_status(self):
         f_exists = os.path.exists(config.COOKIE_FILE)
         f_size = os.path.getsize(config.COOKIE_FILE) if f_exists else 0
+        days = self.cookie_days_remaining()
         return {
-            "cookie_valid": self.cookie_valid,
-            "cookie_file":  f_exists and f_size > 100,
-            "cookie_size":  f_size,
-            "platform":     "windows" if IS_WINDOWS else "linux",
-            "edge_running": self._is_running(),
-            "edge_state":   self._state.name,
+            "cookie_valid":        self.cookie_valid,
+            "cookie_file":         f_exists and f_size > 100,
+            "cookie_size":         f_size,
+            "cookie_days_remaining": days,
+            "platform":            "windows" if IS_WINDOWS else "linux",
+            "edge_running":        self._is_running(),
+            "edge_state":          self._state.name,
         }
