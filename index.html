@@ -726,6 +726,7 @@ header{
         <option value="50">50개씩</option>
         <option value="100">100개씩</option>
       </select>
+      <button id="filter-reset-btn" title="모든 필터 초기화" style="display:none;padding:5px 10px;border:1px solid var(--border2);border-radius:7px;background:var(--bg3);color:var(--text3);font-size:0.8rem;cursor:pointer;white-space:nowrap">✕ 초기화</button>
     </div>
     <div id="channel-chips" class="channel-chips"></div>
     <div class="info-bar">
@@ -1344,20 +1345,38 @@ var searchWrap=document.getElementById('search-wrap');
 var searchClear=document.getElementById('search-clear');
 function _syncSearchClear(){ if(searchWrap) searchWrap.classList.toggle('has-text',!!searchInput.value); }
 searchInput.addEventListener('input',function(){
-  _syncSearchClear();
+  _syncSearchClear(); _syncResetBtn();
   clearTimeout(filterTimer);
   filterTimer=setTimeout(function(){ currentPage=1; render(applyFilters(allData)); },300);
 });
-if(searchClear) searchClear.addEventListener('click',function(){ searchInput.value=''; _syncSearchClear(); currentPage=1; render(applyFilters(allData)); searchInput.focus(); });
-channelFilter.addEventListener('change',function(){ currentPage=1; render(applyFilters(allData)); updateChannelFilter(); });
+if(searchClear) searchClear.addEventListener('click',function(){ searchInput.value=''; _syncSearchClear(); _syncResetBtn(); currentPage=1; render(applyFilters(allData)); searchInput.focus(); });
+channelFilter.addEventListener('change',function(){ currentPage=1; render(applyFilters(allData)); updateChannelFilter(); _syncResetBtn(); });
 document.getElementById('channel-chips').addEventListener('click',function(e){
   var btn=e.target.closest('.chip');
   if(!btn) return;
   channelFilter.value=btn.dataset.ch||'';
-  currentPage=1; render(applyFilters(allData)); updateChannelFilter();
+  currentPage=1; render(applyFilters(allData)); updateChannelFilter(); _syncResetBtn();
 });
 sortSelect.addEventListener('change',function(){ localStorage.setItem('ss-sort',sortSelect.value); currentPage=1; render(applyFilters(allData)); });
-periodSelect.addEventListener('change',function(){ currentPage=1; _syncPeriodCard(); render(applyFilters(allData)); });
+periodSelect.addEventListener('change',function(){ currentPage=1; _syncPeriodCard(); render(applyFilters(allData)); _syncResetBtn(); });
+
+/* ── 필터 초기화 버튼 ── */
+var filterResetBtn = document.getElementById('filter-reset-btn');
+function _isFiltered(){
+  return !!(searchInput.value||channelFilter.value||periodSelect.value||membershipCheck.checked);
+}
+function _syncResetBtn(){
+  if(filterResetBtn) filterResetBtn.style.display=_isFiltered()?'':'none';
+}
+function resetAllFilters(){
+  searchInput.value=''; _syncSearchClear();
+  channelFilter.value='';
+  periodSelect.value=''; _syncPeriodCard();
+  membershipCheck.checked=false; membershipLabel.classList.remove('active');
+  currentPage=1; render(applyFilters(allData)); updateChannelFilter();
+  _syncResetBtn();
+}
+if(filterResetBtn) filterResetBtn.addEventListener('click', resetAllFilters);
 
 /* ── 기간 필터 ── */
 var _todayCard = document.getElementById('ss-today') ? document.getElementById('ss-today').parentElement : null;
@@ -1376,7 +1395,7 @@ function _syncPeriodCard(){
 }
 membershipCheck.addEventListener('change',function(){
   membershipLabel.classList.toggle('active',membershipCheck.checked);
-  currentPage=1; render(applyFilters(allData));
+  currentPage=1; render(applyFilters(allData)); _syncResetBtn();
 });
 if(perPageSelectEl){
   perPageSelectEl.addEventListener('change',function(){
