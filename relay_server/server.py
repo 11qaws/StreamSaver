@@ -95,29 +95,60 @@ dl_state: dict[str, dict] = {}
 bot_discord_connected: bool = False
 _active_connections: int = 0
 
-# ── IPC (discord_bot ↔ server) ───────────────────────────────────────────────
+# ── IPC (서비스 프로세스 ↔ server) ───────────────────────────────────────────
+#
+# 현재: 1:N 멀티 클라이언트 — 같은 VPS 내 여러 서비스가 127.0.0.1:8766으로 동시 연결 가능.
+# 각 서비스는 연결 직후 {"t":"register","role":"bot"} 같은 메시지로 자신을 식별.
+# _ipc_broadcast()로 연결된 모든 클라이언트에 이벤트 팬아웃.
+#
+# TODO(확장): 서비스가 VPS 외부(다른 서버)로 분산될 경우 Redis pub/sub으로 교체 검토.
+#   - server.py → Redis PUBLISH "relay:event" {...}
+#   - 각 서비스(봇, 웹훅, 모바일 푸시 등) → Redis SUBSCRIBE "relay:event"
+#   - 장점: 프로세스 위치 무관, 수평 확장, 메시지 영속화(Stream 사용 시)
+#   - 단점: Redis 인스턴스 관리 필요, 현재 VPS 단일 구성에선 오버엔지니어링
 
-_ipc_writer: Optional[asyncio.StreamWriter] = None
+# writer → role 매핑 ("bot", "webhook", 등 — 미식별 시 "unknown")
+_ipc_clients: dict[asyncio.StreamWriter, str] = {}
 
 
-async def _ipc_send(msg: dict):
-    """discord_bot에 JSON 메시지 전송 (fire-and-forget)."""
-    w = _ipc_writer
-    if not w:
-        return
+async def _ipc_send(msg: dict, writer: asyncio.StreamWriter):
+    """특정 IPC 클라이언트에 JSON 메시지 전송."""
+    raw = (json.dumps(msg, ensure_ascii=False) + "\n").encode()
     try:
-        w.write((json.dumps(msg, ensure_ascii=False) + "\n").encode())
-        await w.drain()
+        writer.write(raw)
+        await writer.drain()
     except Exception as e:
-        logger.debug("IPC send error: %s", e)
+        logger.debug("IPC send error (role=%s): %s", _ipc_clients.get(writer, "?"), e)
+
+
+async def _ipc_broadcast(msg: dict):
+    """연결된 모든 IPC 클라이언트에 팬아웃 (dead 연결 자동 정리)."""
+    # TODO(Redis): PUBLISH "relay:event" json.dumps(msg)
+    raw = (json.dumps(msg, ensure_ascii=False) + "\n").encode()
+    dead = []
+    for w in list(_ipc_clients):
+        try:
+            w.write(raw)
+            await w.drain()
+        except Exception:
+            dead.append(w)
+    for w in dead:
+        _ipc_clients.pop(w, None)
+
+
+async def _ipc_send_to_role(msg: dict, role: str):
+    """특정 role의 클라이언트에만 전송 (예: role="bot")."""
+    for w, r in list(_ipc_clients.items()):
+        if r == role:
+            await _ipc_send(msg, w)
 
 
 async def _ipc_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    """discord_bot IPC 연결 처리 — 연결당 하나."""
-    global _ipc_writer, bot_discord_connected
-    _ipc_writer = writer
+    """IPC 클라이언트 연결 처리 — 연결 하나당 태스크 하나."""
+    global bot_discord_connected
     addr = writer.get_extra_info("peername")
-    logger.info("Bot IPC connected from %s", addr)
+    _ipc_clients[writer] = "unknown"
+    logger.info("IPC client connected from %s (total: %d)", addr, len(_ipc_clients))
 
     try:
         async for raw in reader:
@@ -130,6 +161,13 @@ async def _ipc_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
                 continue
 
             t = msg.get("t")
+
+            # 최초 등록 — 클라이언트가 자신의 역할을 알림
+            if t == "register":
+                role = msg.get("role", "unknown")
+                _ipc_clients[writer] = role
+                logger.info("IPC client registered as '%s' from %s", role, addr)
+                continue
 
             if t == "bot_up":
                 bot_discord_connected = True
@@ -144,19 +182,18 @@ async def _ipc_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
                 logger.info("Discord bot disconnected from Discord")
 
             elif t == "cmd":
-                # Discord 명령 → PC 클라이언트로 전달
                 gid     = msg.get("gid", "")
                 cmd     = msg.get("cmd", "")
                 args    = msg.get("args", {})
                 req_id  = msg.get("id", "")
                 timeout = float(msg.get("timeout", 12))
-                asyncio.create_task(_handle_bot_cmd(gid, cmd, args, req_id, timeout))
+                asyncio.create_task(_handle_bot_cmd(gid, cmd, args, req_id, timeout, writer))
 
             elif t == "setup":
                 gid    = msg.get("gid", "")
                 cid    = msg.get("cid")
                 req_id = msg.get("id", "")
-                asyncio.create_task(_handle_setup(gid, cid, req_id))
+                asyncio.create_task(_handle_setup(gid, cid, req_id, writer))
 
             elif t == "get_state":
                 gid    = msg.get("gid", "")
@@ -164,25 +201,28 @@ async def _ipc_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
                 state  = dl_state.get(gid, {})
                 connected = _is_connected(gid)
                 await _ipc_send({"t": "state_resp", "id": req_id,
-                                 "gid": gid, "connected": connected, "data": state})
+                                 "gid": gid, "connected": connected, "data": state},
+                                writer)
 
     except Exception as e:
-        logger.warning("IPC handler error: %s", e)
+        logger.warning("IPC handler error (role=%s): %s", _ipc_clients.get(writer, "?"), e)
     finally:
-        if _ipc_writer is writer:
-            _ipc_writer = None
-        bot_discord_connected = False
-        asyncio.create_task(_push_to_all(json.dumps(
-            {"type": "bot_status", "bot_discord": False})))
-        logger.info("Bot IPC disconnected")
+        role = _ipc_clients.pop(writer, "unknown")
+        if role == "bot":
+            bot_discord_connected = False
+            asyncio.create_task(_push_to_all(json.dumps(
+                {"type": "bot_status", "bot_discord": False})))
+        logger.info("IPC client disconnected (role=%s, remaining: %d)", role, len(_ipc_clients))
 
 
-async def _handle_bot_cmd(gid: str, cmd: str, args: dict, req_id: str, timeout: float):
+async def _handle_bot_cmd(gid: str, cmd: str, args: dict, req_id: str, timeout: float,
+                          writer: asyncio.StreamWriter):
     result = await _send_cmd(gid, cmd, args, timeout)
-    await _ipc_send({"t": "resp", "id": req_id, "msg": result})
+    await _ipc_send({"t": "resp", "id": req_id, "msg": result}, writer)
 
 
-async def _handle_setup(gid: str, cid: Optional[int], req_id: str):
+async def _handle_setup(gid: str, cid: Optional[int], req_id: str,
+                        writer: asyncio.StreamWriter):
     if gid not in guilds:
         guilds[gid] = {}
     if cid:
@@ -190,7 +230,7 @@ async def _handle_setup(gid: str, cid: Optional[int], req_id: str):
         _save_state()
 
     if _is_connected(gid):
-        await _ipc_send({"t": "setup_resp", "id": req_id, "connected": True})
+        await _ipc_send({"t": "setup_resp", "id": req_id, "connected": True}, writer)
         return
 
     code = _gen_code()
@@ -198,7 +238,8 @@ async def _handle_setup(gid: str, cid: Optional[int], req_id: str):
         "guild_id": gid,
         "expires":  datetime.utcnow() + timedelta(minutes=10),
     }
-    await _ipc_send({"t": "setup_resp", "id": req_id, "connected": False, "code": code})
+    await _ipc_send({"t": "setup_resp", "id": req_id, "connected": False, "code": code},
+                    writer)
 
 
 # ── 상태 영속화 ───────────────────────────────────────────────────────────────
@@ -264,13 +305,13 @@ async def _push_to_all(payload: str):
 
 
 async def _channel_send(guild_id: str, content: str):
-    """Discord 채널로 메시지 전송 — IPC로 discord_bot에 위임."""
+    """Discord 채널로 메시지 전송 — role='bot' IPC 클라이언트에 위임."""
     if guild_id not in guilds:
         return
     ch_id = guilds[guild_id].get("channel_id")
     if not ch_id:
         return
-    await _ipc_send({"t": "send", "cid": ch_id, "msg": content})
+    await _ipc_send_to_role({"t": "send", "cid": ch_id, "msg": content}, role="bot")
 
 
 async def _heartbeat_loop():
@@ -453,8 +494,7 @@ async def ws_handler(ws):
                 gid = msg.get("guild_id") or guild_id
                 if gid:
                     dl_state[gid] = msg.get("data", {})
-                    # discord_bot autocomplete용으로 IPC 전달
-                    asyncio.create_task(_ipc_send({
+                    asyncio.create_task(_ipc_broadcast({
                         "t": "state_push", "gid": gid, "data": dl_state[gid]}))
 
     except websockets.exceptions.ConnectionClosed:

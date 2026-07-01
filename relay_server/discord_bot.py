@@ -122,6 +122,7 @@ async def connect_ipc():
             reader, writer = await asyncio.open_connection(IPC_HOST, IPC_PORT)
             _writer = writer
             logger.info("IPC connected to hub %s:%d", IPC_HOST, IPC_PORT)
+            await ipc_send({"t": "register", "role": "bot"})
             await ipc_send({"t": "bot_up"})
             delay = 5
             await ipc_reader_loop(reader)
