@@ -1465,7 +1465,7 @@ function openFileFolder(fp){
 function reDownload(url){
   var btn=document.getElementById('modal-redl-btn');
   if(btn){ btn.disabled=true; btn.textContent='추가 중...'; }
-  fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})})
+  fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,force:true})})
     .then(function(r){ return r.json(); }).then(function(d){
       if(d.ok){ showToast('다시 다운로드 추가됨 (#'+d.id+')','ok'); closeModal(); pollStatus(); }
       else{ showToast(d.error||'추가 실패','err'); if(btn){ btn.disabled=false; btn.textContent='⬇ 다시 다운로드'; } }

@@ -46,6 +46,7 @@ class DownloadTask:
         self.is_membership = False
         self.process = None
         self.cancelled = False
+        self.force = False      # True = 아카이브 체크 건너뜀 (재다운로드용)
         self.id = None
         self.error = None
         self.file_path = None
@@ -198,7 +199,7 @@ class DownloadManager:
         except Exception as e:
             logger.error("archive write error: %s", e)
 
-    def enqueue(self, url, requested_by):
+    def enqueue(self, url, requested_by, force=False):
         url = url.strip()
         if not url.startswith(("http://", "https://")):
             raise ValueError("올바르지 않은 URL 스킴입니다 (http/https만 허용)")
@@ -217,6 +218,7 @@ class DownloadManager:
 
         task = DownloadTask(url, requested_by)
         task.id = task_id
+        task.force = force
         self.queue.put(task)
         logger.info("Task #%d queued: %s", task.id, url)
         self._emit("queued", task)
@@ -366,7 +368,7 @@ class DownloadManager:
             self._emit("failed", task)
             return
 
-        if self._in_archive(task.url, info.get("id", "")):
+        if not task.force and self._in_archive(task.url, info.get("id", "")):
             task.status = TaskStatus.FAILED
             task.error  = "이미 다운로드한 영상입니다"
             self._emit("failed", task)

@@ -241,8 +241,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not url:
             self._json({"ok": False, "error": "URL이 필요합니다"}, 400)
             return
+        force = bool(data.get("force"))
         try:
-            task = dm.enqueue(url, "dashboard")
+            task = dm.enqueue(url, "dashboard", force=force)
             self._json({"ok": True, "id": task.id})
         except ValueError as e:
             self._json({"ok": False, "error": str(e)}, 400)
