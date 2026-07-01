@@ -538,7 +538,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "installer not ready"}, 409)
             return
         import threading
-        threading.Thread(target=gui._confirm_and_install, daemon=True).start()
+        threading.Thread(target=gui._do_install, daemon=True).start()
         self._json({"ok": True})
 
     def _open_folder(self, qs):
