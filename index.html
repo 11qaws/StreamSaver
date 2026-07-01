@@ -1100,7 +1100,7 @@ function renderCard(item, idx){
   var size=item.file_size_str||fmtSize(item.file_size);
   var badges='';
   if(item.is_membership) badges+='<span class="badge badge-membership">🔒 멤버십</span>';
-  if(item.upload_to) badges+='<span class="badge badge-gdrive">☁️ Drive</span>';
+  if(item.upload_to) badges+='<span class="badge badge-gdrive">☁️ '+(item.kept_local===false?'Drive (삭제)':'Drive')+'</span>';
   return '<div class="card" data-idx="'+idx+'">'
     +'<div class="card-thumb">'
     +'<img src="'+thumb+'" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'<div style=\\\'padding:35% 0;text-align:center;color:var(--border2);font-size:1.5rem\\\'>🎬</div>\'">'
@@ -1354,14 +1354,15 @@ function openModal(item){
     return '<div class="modal-row"><span class="m-key">'+r[0]+'</span><span class="m-val">'+r[1]+'</span></div>';
   }).join('');
   var ytUrl='https://www.youtube.com/watch?v='+item.id;
-  var folderBtn = item.file_path ? '<button class="modal-btn secondary" id="modal-folder-btn">📂 파일 위치 보기</button>' : '';
+  var _fileLocal = item.file_path && item.kept_local !== false;
+  var folderBtn = _fileLocal ? '<button class="modal-btn secondary" id="modal-folder-btn">📂 파일 위치 보기</button>' : '';
   modalActions.innerHTML=
     '<a class="modal-btn primary" href="'+ytUrl+'" target="_blank">▶ YouTube에서 보기</a>'
     +'<button class="modal-btn secondary" onclick="copyToClip(\''+ytUrl+'\')">🔗 URL 복사</button>'
     +folderBtn
     +'<button class="modal-btn secondary" id="modal-redl-btn" onclick="reDownload(\''+ytUrl+'\')">⬇ 다시 다운로드</button>'
     +'<button class="modal-btn danger" id="modal-del-btn" onclick="deleteHistoryItem(\''+item.id+'\')">🗑 기록 삭제</button>';
-  if(item.file_path){
+  if(_fileLocal){
     var fbtn = document.getElementById('modal-folder-btn');
     if(fbtn) fbtn.addEventListener('click', function(){ openFileFolder(item.file_path); });
   }

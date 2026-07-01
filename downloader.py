@@ -184,7 +184,7 @@ class DownloadManager:
             return False
         try:
             with self._archive_lock:
-                with open(config.ARCHIVE_FILE) as f:
+                with open(config.ARCHIVE_FILE, encoding="utf-8") as f:
                     text = f.read()
             return url in text or vid in text
         except Exception:
@@ -193,7 +193,7 @@ class DownloadManager:
     def _add_archive(self, url, vid):
         try:
             with self._archive_lock:
-                with open(config.ARCHIVE_FILE, "a") as f:
+                with open(config.ARCHIVE_FILE, "a", encoding="utf-8") as f:
                     f.write(f"{vid}\t{url}\n")
         except Exception as e:
             logger.error("archive write error: %s", e)
