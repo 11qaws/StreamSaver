@@ -200,7 +200,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if fmt == "csv":
             import io
             buf = io.StringIO()
-            cols = ["title", "channel", "id", "upload_date", "duration", "file_size", "is_membership"]
+            cols = ["title", "channel", "id", "upload_date", "downloaded_at",
+                    "duration", "file_size", "is_membership", "file_path"]
             buf.write(",".join(cols) + "\r\n")
             for e in history:
                 row = [
@@ -208,9 +209,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     '"' + str(e.get("channel", "")).replace('"', '""') + '"',
                     str(e.get("id", "")),
                     str(e.get("upload_date", "")),
+                    str(e.get("downloaded_at", "")),
                     str(e.get("duration", "")),
                     str(e.get("file_size", "")),
                     "1" if e.get("is_membership") else "0",
+                    '"' + str(e.get("file_path", "")).replace('"', '""') + '"',
                 ]
                 buf.write(",".join(row) + "\r\n")
             data = buf.getvalue().encode("utf-8-sig")

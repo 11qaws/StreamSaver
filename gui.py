@@ -167,7 +167,7 @@ class GUIManager:
                 return TrayState.DOWNLOADING
             if self._warnings:
                 return TrayState.WARNING
-        if self._update_info and self._update_progress is None:
+        if self._update_info:
             return TrayState.UPDATE
         return TrayState.IDLE
 
