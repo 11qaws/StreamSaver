@@ -808,8 +808,8 @@ header{
   <div class="modal" style="max-width:480px">
     <button class="modal-close" onclick="closeBulkModal()">✕</button>
     <div class="modal-title" style="margin-bottom:4px">📋 URL 일괄 추가</div>
-    <div style="font-size:0.8rem;color:var(--text3);margin-bottom:12px">한 줄에 YouTube URL 하나씩 입력하세요</div>
-    <textarea id="bulk-textarea" rows="8" placeholder="https://www.youtube.com/watch?v=...&#10;https://youtu.be/...&#10;https://www.youtube.com/watch?v=..." style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:0.85rem;font-family:inherit;resize:vertical;line-height:1.5"></textarea>
+    <div style="font-size:0.8rem;color:var(--text3);margin-bottom:12px">YouTube URL이 포함된 텍스트를 그대로 붙여넣으세요 — URL만 자동으로 추출합니다</div>
+    <textarea id="bulk-textarea" rows="6" placeholder="URL만 붙여넣거나, 여러 URL이 섞인 텍스트를 그대로 붙여넣어도 됩니다..." style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:0.85rem;font-family:inherit;resize:vertical;line-height:1.5"></textarea>
     <div id="bulk-count" style="font-size:0.82rem;color:var(--text3);margin:8px 0 14px;min-height:1.2em"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button class="modal-btn secondary" onclick="closeBulkModal()">취소</button>
@@ -1866,19 +1866,36 @@ function _parseBulkUrls(){
   if(!bulkTextarea) return [];
   var text=bulkTextarea.value;
   var matches=text.match(_YT_URL_RE)||[];
-  return [...new Set(matches)];
+  var cleaned=matches.map(function(u){ return u.replace(/[.,;:)}\]'"]+$/, ''); });
+  return [...new Set(cleaned)];
+}
+function _shortUrl(u){
+  try{
+    var m=u.match(/[?&]v=([A-Za-z0-9_-]{11})/);
+    if(m) return 'youtube.com/watch?v='+m[1];
+    var m2=u.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);
+    if(m2) return 'youtu.be/'+m2[1];
+    var m3=u.match(/shorts\/([A-Za-z0-9_-]{11})/);
+    if(m3) return 'youtube.com/shorts/'+m3[1];
+  }catch(e){}
+  return u.length>60?u.slice(0,57)+'...':u;
 }
 function _updateBulkCount(){
   var urls=_parseBulkUrls();
   if(!bulkCount||!bulkSubmitBtn) return;
   if(urls.length===0){
-    bulkCount.textContent='';
-    bulkCount.style.color='var(--text3)';
+    bulkCount.innerHTML='';
     bulkSubmitBtn.disabled=true;
     bulkSubmitBtn.textContent='추가';
   } else {
-    bulkCount.textContent='YouTube URL '+urls.length+'개 감지됨';
-    bulkCount.style.color='var(--accent)';
+    var listHtml=urls.map(function(u){
+      return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)">'
+        +'<span style="color:var(--accent);font-size:0.75rem;flex-shrink:0">▸</span>'
+        +'<span style="font-size:0.78rem;color:var(--text2);word-break:break-all">'+esc(_shortUrl(u))+'</span>'
+        +'</div>';
+    }).join('');
+    bulkCount.innerHTML='<div style="font-size:0.8rem;font-weight:600;color:var(--accent);margin-bottom:6px">YouTube URL '+urls.length+'개 감지됨</div>'
+      +'<div style="max-height:140px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px 8px">'+listHtml+'</div>';
     bulkSubmitBtn.disabled=false;
     bulkSubmitBtn.textContent=urls.length+'개 추가';
   }
@@ -1889,7 +1906,7 @@ function openBulkModal(){
   if(bulkTextarea) bulkTextarea.value='';
   if(bulkProgressEl) bulkProgressEl.style.display='none';
   if(bulkSubmitBtn){ bulkSubmitBtn.disabled=true; bulkSubmitBtn.textContent='추가'; }
-  if(bulkCount) bulkCount.textContent='';
+  if(bulkCount) bulkCount.innerHTML='';
   o.style.display='flex';
   setTimeout(function(){ if(bulkTextarea) bulkTextarea.focus(); },50);
 }
