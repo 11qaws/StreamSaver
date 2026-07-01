@@ -575,6 +575,8 @@ header{
         <span>💾 <span class="num" id="stat-size">-</span></span>
         <span class="stat-divider"></span>
         <span>📺 <span class="num" id="stat-channels">-</span>채널</span>
+        <span class="stat-divider" id="stat-today-div" style="display:none"></span>
+        <span id="stat-today-wrap" style="display:none">☀️ 오늘 <span class="num" id="stat-today">0</span>개</span>
       </div>
       <button class="theme-btn app-only" id="theme-toggle" title="다크 모드 전환">🌙</button>
     </div>
@@ -1091,11 +1093,22 @@ function applyFilters(all){
 
 /* ── 헤더 통계 ── */
 function updateHeaderStats(){
-  var channels={}, totalSize=0;
-  allData.forEach(function(e){ channels[e.channel||'Unknown']=1; totalSize+=e.file_size||0; });
+  var channels={}, totalSize=0, todayCount=0;
+  var todayStr=new Date().toISOString().slice(0,10);
+  allData.forEach(function(e){
+    channels[e.channel||'Unknown']=1;
+    totalSize+=e.file_size||0;
+    if((e.downloaded_at||'').slice(0,10)===todayStr) todayCount++;
+  });
   setText('stat-files', allData.length);
   setText('stat-size', fmtSize(totalSize));
   setText('stat-channels', Object.keys(channels).length);
+  setText('stat-today', todayCount);
+  var show=todayCount>0;
+  var div=document.getElementById('stat-today-div');
+  var wrap=document.getElementById('stat-today-wrap');
+  if(div) div.style.display=show?'':'none';
+  if(wrap) wrap.style.display=show?'':'none';
 }
 
 /* ── 채널 필터 목록 ── */
