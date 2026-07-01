@@ -968,7 +968,13 @@ function pollStatus(){
     updateActivePanel(st.active||[], st.queue_list||[]);
     var actCount=st.active?st.active.length:0;
     document.title = actCount>0 ? '('+actCount+'↓) StreamSaver' : 'StreamSaver';
-    if(prevActiveCount>0&&actCount===0) fetchHistory();
+    if(actCount < prevActiveCount){
+      var _prevLen=allData.length;
+      fetchHistory().then(function(){
+        var _newLen=allData.length;
+        if(_newLen>_prevLen) showToast('다운로드 완료 (+'+ (_newLen-_prevLen) +'개)','ok');
+      }).catch(function(){});
+    }
     prevActiveCount=actCount;
   }).catch(function(){
     _pollFailCount++;
@@ -1483,7 +1489,7 @@ dlUrlInput.addEventListener('paste', function(e){
 });
 // 키보드 단축키: D키로 URL 입력란 포커스 (모달 닫혀있을 때)
 document.addEventListener('keydown',function(e){
-  if(e.key==='t'&&!e.ctrlKey&&!e.metaKey&&!currentModal&&activeEl!=='INPUT'&&activeEl!=='TEXTAREA'){
+  if(e.key==='t'&&!e.ctrlKey&&!e.metaKey&&!currentModal&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){
     themeBtn.click();
   }
   if(e.key==='d'&&!e.ctrlKey&&!e.metaKey&&!currentModal&&document.activeElement.tagName!=='INPUT'){
