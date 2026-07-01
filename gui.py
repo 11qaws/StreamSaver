@@ -158,15 +158,15 @@ class GUIManager:
     # ── 상태 계산 ─────────────────────────────────────────────────────────────
 
     def _state(self) -> TrayState:
-        if not self._bot_connected:
-            return TrayState.OFFLINE
         with self._lock:
             if self._errors:
                 return TrayState.ERROR
             if self._active_dl > 0:
-                return TrayState.DOWNLOADING
+                return TrayState.DOWNLOADING  # relay 오프라인 중에도 다운로드 표시
             if self._warnings:
                 return TrayState.WARNING
+        if not self._bot_connected:
+            return TrayState.OFFLINE
         if self._update_info:
             return TrayState.UPDATE
         return TrayState.IDLE

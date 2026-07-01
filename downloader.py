@@ -271,6 +271,7 @@ class DownloadManager:
             config.YT_DLP,
             "-o", template,
             "--no-overwrites",
+            "--no-playlist",
             "--merge-output-format", "mp4",
             "--ffmpeg-location", config.FFMPEG,
             "--progress", "--newline", "--no-warnings",

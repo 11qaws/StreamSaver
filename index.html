@@ -601,18 +601,23 @@ header{
       <span class="val" id="val-bot">확인 중</span>
     </div>
     <div class="status-divider"></div>
-    <div class="status-item">
+    <div class="status-item" style="position:relative">
       <div class="dot dot-gray" id="dot-cookie"></div>
       <span class="label">쿠키</span>
       <span class="val" id="val-cookie">확인 중</span>
+      <span id="cookie-help-btn" style="display:none;margin-left:4px;cursor:pointer;color:var(--text3);font-size:0.72rem;border:1px solid var(--border2);border-radius:50%;width:14px;height:14px;display:none;align-items:center;justify-content:center;flex-shrink:0" title="쿠키 오류 해결 방법 보기" onclick="document.getElementById('cookie-help-box').style.display=document.getElementById('cookie-help-box').style.display==='block'?'none':'block'">?</span>
+      <div id="cookie-help-box" style="display:none;position:absolute;top:calc(100% + 8px);left:0;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:0.8rem;color:var(--text2);white-space:nowrap;z-index:50;box-shadow:0 4px 16px rgba(0,0,0,.18);line-height:1.7">
+        <b style="color:var(--text)">쿠키 갱신 방법</b><br>
+        1. 트레이 아이콘 우클릭 → <b>Edge 로그인</b><br>
+        2. Edge가 열리면 YouTube에 로그인<br>
+        3. 로그인 완료 후 Edge 닫기<br>
+        <span style="color:var(--text3)">또는 디스코드에서 <b>!로그인</b> 명령어 사용</span>
+      </div>
     </div>
     <div class="status-divider"></div>
-    <div class="status-item" style="flex-direction:column;align-items:flex-start;gap:2px">
-      <div style="display:flex;align-items:center;gap:5px">
-        <span class="label">디스크</span>
-        <span class="val" id="val-disk">-</span>
-      </div>
-      <div class="disk-bar-wrap"><div class="disk-bar-fill" id="disk-bar-fill"></div></div>
+    <div class="status-item">
+      <span class="label">디스크</span>
+      <span class="val" id="val-disk">-</span>
     </div>
     <div class="status-divider"></div>
     <div class="status-item">
@@ -651,7 +656,7 @@ header{
     <button class="btn-dl" id="bulk-open-btn" title="여러 URL 한 번에 추가" style="background:var(--bg2);color:var(--text2);border:1px solid var(--border2);flex-shrink:0">+ 여러 개</button>
   </div>
   <div id="url-preview" style="display:none;margin:8px 0 2px;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;display:none;align-items:center;gap:12px;min-height:64px">
-    <img id="url-preview-thumb" src="" alt="" style="width:96px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--bg3)">
+    <img id="url-preview-thumb" src="" alt="" style="width:96px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--bg3)" onerror="this.style.visibility='hidden'" onload="this.style.visibility='visible'">
     <div style="flex:1;min-width:0">
       <div id="url-preview-title" style="font-size:0.875rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
       <div id="url-preview-meta" style="font-size:0.78rem;color:var(--text3);margin-top:3px"></div>
@@ -973,13 +978,11 @@ function updateStatusBar(st){
   if(st.cookie_valid&&ckDays!==null&&ckDays!==undefined) ckLabel+=' ('+ckDays+'일)';
   setText('val-cookie', ckLabel);
   setText('val-disk', st.disk_free_gb!==undefined ? st.disk_free_gb+' GB 여유' : '-');
-  if(st.disk_total_gb>0){
-    var usedPct=Math.round((1-st.disk_free_gb/st.disk_total_gb)*100);
-    var bar=document.getElementById('disk-bar-fill');
-    if(bar){
-      bar.style.width=usedPct+'%';
-      bar.className='disk-bar-fill'+(usedPct>=90?' danger':usedPct>=75?' warn':'');
-    }
+  var cookieHelpBtn=document.getElementById('cookie-help-btn');
+  if(cookieHelpBtn){
+    var needHelp=!st.cookie_valid;
+    cookieHelpBtn.style.display=needHelp?'inline-flex':'none';
+    if(!needHelp){ var hb=document.getElementById('cookie-help-box'); if(hb) hb.style.display='none'; }
   }
   var actCount = st.active ? st.active.length : 0;
   setDot('dot-active', actCount>0?'blue':'gray');
@@ -1750,7 +1753,9 @@ function _hideUrlPreview(){
 function _showUrlPreview(info){
   if(!_urlPreviewEl) return;
   document.getElementById('url-preview-loading').style.display='none';
-  document.getElementById('url-preview-thumb').src=info.thumbnail||'';
+  var _thumb=document.getElementById('url-preview-thumb');
+  _thumb.style.visibility='hidden';
+  _thumb.src=info.thumbnail||'';
   document.getElementById('url-preview-title').textContent=info.title||'';
   var dur=info.duration?fmtDur(info.duration):'';
   var date=info.upload_date?fmtDate(info.upload_date):'';
@@ -1908,11 +1913,14 @@ function openBulkModal(){
   if(bulkSubmitBtn){ bulkSubmitBtn.disabled=true; bulkSubmitBtn.textContent='추가'; }
   if(bulkCount) bulkCount.innerHTML='';
   o.style.display='flex';
+  requestAnimationFrame(function(){ o.classList.add('open'); });
   setTimeout(function(){ if(bulkTextarea) bulkTextarea.focus(); },50);
 }
 function closeBulkModal(){
   var o=document.getElementById('bulk-overlay');
-  if(o) o.style.display='none';
+  if(!o) return;
+  o.classList.remove('open');
+  setTimeout(function(){ if(!o.classList.contains('open')) o.style.display='none'; },160);
 }
 if(bulkTextarea) bulkTextarea.addEventListener('input', _updateBulkCount);
 var bulkOpenBtn=document.getElementById('bulk-open-btn');
@@ -1967,11 +1975,15 @@ if(viewToggleBtn){
 /* ── 단축키 도움말 모달 ── */
 function openHotkeyModal(){
   var o=document.getElementById('hotkey-overlay');
-  if(o){ o.style.display='flex'; }
+  if(!o) return;
+  o.style.display='flex';
+  requestAnimationFrame(function(){ o.classList.add('open'); });
 }
 function closeHotkeyModal(){
   var o=document.getElementById('hotkey-overlay');
-  if(o) o.style.display='none';
+  if(!o) return;
+  o.classList.remove('open');
+  setTimeout(function(){ if(!o.classList.contains('open')) o.style.display='none'; },160);
 }
 
 /* ── 상단 이동 버튼 ── */
