@@ -1062,11 +1062,8 @@ class GUIManager:
             self._update_progress = None
             self._refresh()
             v = info["version"]
-            self.notify("StreamSaver 업데이트",
-                        f"v{v} 다운로드 완료 — 자동으로 설치합니다.")
-            import time as _time
-            _time.sleep(2)
-            self._do_install()
+            self.notify("StreamSaver 업데이트 준비됨",
+                        f"v{v} 다운로드 완료 — 대시보드에서 설치하세요.")
         except Exception as e:
             logger.error("Auto-update download failed: %s", e)
             self._update_progress = None

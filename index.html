@@ -1628,13 +1628,14 @@ function pollUpdateStatus(){
     if(!d.available){ return; }
     var v='v'+d.version;
     if(d.ready){
-      _showUpdateBanner(v+' 업데이트가 설치 준비됨!', null, null, true);
+      _showUpdateBanner(v+' 출시 — 설치 준비됨', null, null, true);
     } else if(d.downloading){
-      var pct=d.progress!=null?(' ('+d.progress+'%)'):'';
+      var pct=d.progress!=null?(' '+d.progress+'%'):'';
       _showUpdateBanner(v+' 다운로드 중'+pct+'...', null, null, false);
-      _updatePollTimer=setTimeout(pollUpdateStatus, 3000);
+      _updatePollTimer=setTimeout(pollUpdateStatus, 2000);
     } else {
-      _showUpdateBanner(v+' 업데이트가 있습니다!', null, null, false);
+      _showUpdateBanner(v+' 출시 — 백그라운드 다운로드 중...', null, null, false);
+      _updatePollTimer=setTimeout(pollUpdateStatus, 3000);
     }
   }).catch(function(){});
 }
