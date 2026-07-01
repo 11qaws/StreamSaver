@@ -242,6 +242,7 @@ class DownloadManager:
                 self._active_urls.discard(task.url)
             self.sem.release()
             self._kick()
+            self._emit("finish", task)  # task removed from active; count is now correct
 
     def _build_dl_cmd(self, task, template, qual, use_cookies, state):
         ck = self._cookie_args() if use_cookies else []

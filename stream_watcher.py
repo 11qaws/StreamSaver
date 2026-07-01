@@ -181,9 +181,13 @@ class StreamWatcher:
         channel_name = ch_info["name"]
         logger.info("LIVE DETECTED [%s] '%s' (id=%s)", channel_name, title, vid_id)
 
-        self._seen.add(vid_id)
         video_url = f"https://www.youtube.com/watch?v={vid_id}"
-        self.dl.enqueue(video_url, f"AutoWatcher({channel_name})")
+        try:
+            self.dl.enqueue(video_url, f"AutoWatcher({channel_name})")
+        except Exception as e:
+            logger.warning("enqueue failed for %s: %s — will retry next poll", vid_id, e)
+            return
+        self._seen.add(vid_id)
 
         if self._notify_cb:
             try:

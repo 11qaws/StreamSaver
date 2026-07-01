@@ -255,7 +255,7 @@ def main():
             ctx.gui.inc_completed()
         elif event == "failed":
             ctx.gui.inc_failed()
-        if event not in {"start", "completed", "failed", "cancelled"}:
+        if event not in {"start", "finish"}:
             return
         try:
             s = ctx.dm.status()
