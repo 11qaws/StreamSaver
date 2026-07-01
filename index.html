@@ -873,6 +873,7 @@ function fmtDate(d){
   if(!d||d.length<8) return '';
   return d.slice(0,4)+'.'+d.slice(4,6)+'.'+d.slice(6,8);
 }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtDur(sec){
   if(!sec) return '';
   var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60);
@@ -938,9 +939,9 @@ function updateActivePanel(active, queueList){
     var rowClass='task-row'+(t.status==='failed'?' state-failed':'');
     html+='<div class="'+rowClass+'">'
       +'<div class="task-top">'
-      +'<div class="task-title" title="'+title.replace(/"/g,'&quot;')+'">'+title+'</div>'
+      +'<div class="task-title" title="'+esc(title)+'">'+esc(title)+'</div>'
       +'<div class="task-meta">'+meta.join(' &middot; ')
-      +(t.requested_by?'<span class="task-by">by '+t.requested_by+'</span>':'')
+      +(t.requested_by?'<span class="task-by">by '+esc(t.requested_by)+'</span>':'')
       +'</div>'
       +'<span class="task-status-badge '+badge+'">'+statusLabel(badge)+'</span>'
       +'<button class="btn-cancel-task" data-id="'+t.id+'">취소</button>'
@@ -957,8 +958,8 @@ function updateActivePanel(active, queueList){
       var m=url.match(/[?&]v=([^&]+)/);
       var label=m?'youtu.be/'+m[1]:(url.length>50?url.slice(0,47)+'...':url||'#'+q.id);
       html+='<div class="queue-row"><span class="q-num">'+(i+1)+'</span>'
-        +'<span title="'+url+'">'+label+'</span>'
-        +(q.requested_by?'<span class="q-by">'+q.requested_by+'</span>':'')
+        +'<span title="'+esc(url)+'">'+esc(label)+'</span>'
+        +(q.requested_by?'<span class="q-by">'+esc(q.requested_by)+'</span>':'')
         +'</div>';
     });
     html+='</div>';
@@ -1123,7 +1124,7 @@ function updateChannelFilter(){
 
 /* ── 카드 렌더 ── */
 function renderCard(item, idx){
-  var thumb=item.thumbnail||'https://img.youtube.com/vi/'+item.id+'/mqdefault.jpg';
+  var thumb=item.thumbnail||'https://img.youtube.com/vi/'+esc(item.id)+'/mqdefault.jpg';
   var dur=fmtDur(item.duration);
   var date=fmtDate(item.upload_date);
   var size=item.file_size_str||fmtSize(item.file_size);
@@ -1132,13 +1133,13 @@ function renderCard(item, idx){
   if(item.upload_to) badges+='<span class="badge badge-gdrive">☁️ '+(item.kept_local===false?'Drive (삭제)':'Drive')+'</span>';
   return '<div class="card" data-idx="'+idx+'">'
     +'<div class="card-thumb">'
-    +'<img src="'+thumb+'" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'<div style=\\\'padding:35% 0;text-align:center;color:var(--border2);font-size:1.5rem\\\'>🎬</div>\'">'
+    +'<img src="'+esc(thumb)+'" alt="" loading="lazy" onerror="this.parentElement.innerHTML=\'<div style=\\\'padding:35% 0;text-align:center;color:var(--border2);font-size:1.5rem\\\'>🎬</div>\'">'
     +(dur?'<span class="dur">'+dur+'</span>':'')
     +'</div>'
     +'<div class="card-body">'
-    +'<div class="card-title" title="'+item.title.replace(/"/g,'&quot;')+'">'+item.title+'</div>'
+    +'<div class="card-title" title="'+esc(item.title)+'">'+esc(item.title)+'</div>'
     +'<div class="card-meta">'
-    +'<span class="channel">'+item.channel+'</span>'
+    +'<span class="channel">'+esc(item.channel)+'</span>'
     +'<span class="mdot"></span>'
     +'<span>'+date+'</span>'
     +'<span class="mdot"></span>'
