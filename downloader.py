@@ -93,21 +93,38 @@ class DownloadManager:
             return ["--js-runtimes", f"node:{config.NODE_JS}"]
         return []
 
-    def _run_ytdlp_info(self, url, extra_args):
+    def _run_ytdlp_info(self, url, extra_args, task=None):
         # -J (--dump-single-json): 포맷 선택 없이 전체 info 덤프 → format unavailable 오류 없음
         # --js-runtimes: Node.js로 YouTube n challenge 해결 (없으면 이미지만 반환)
         cmd = [config.YT_DLP, "-J", "--no-warnings", "--no-config",
                *self._js_runtime_args(), *extra_args, url]
+        proc = None
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
-                               creationflags=_NW)
-            if r.returncode == 0 and r.stdout:
-                return json.loads(r.stdout.strip().split("\n")[0]), r.stderr
-            return None, r.stderr
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    text=True, creationflags=_NW)
+            if task is not None:
+                task.process = proc
+            try:
+                stdout, stderr = proc.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                return None, "timeout"
+            finally:
+                if task is not None:
+                    task.process = None
+            if proc.returncode == 0 and stdout:
+                return json.loads(stdout.strip().split("\n")[0]), stderr
+            return None, stderr
         except Exception as e:
+            if proc is not None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
             return None, str(e)
 
-    def get_info(self, url):
+    def get_info(self, url, task=None):
         """반환: (info | None, use_cookies: bool, last_err: str)"""
         ck = self._cookie_args()
 
@@ -120,7 +137,9 @@ class DownloadManager:
         for args, used_cookies in attempts:
             if used_cookies and not ck:
                 continue
-            info, err = self._run_ytdlp_info(url, args)
+            if task is not None and task.cancelled:
+                return None, False, "cancelled"
+            info, err = self._run_ytdlp_info(url, args, task=task)
             if info:
                 logger.info("get_info OK (cookies=%s)", used_cookies)
                 return info, used_cookies, ""
@@ -348,7 +367,7 @@ class DownloadManager:
         except Exception as e:
             logger.warning("Disk space check failed: %s", e)
 
-        info, used_cookies, info_err = self.get_info(task.url)
+        info, used_cookies, info_err = self.get_info(task.url, task=task)
 
         if not info:
             task.status = TaskStatus.FAILED
