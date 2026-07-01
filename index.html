@@ -881,6 +881,13 @@ function fmtDate(d){
   return d.slice(0,4)+'.'+d.slice(4,6)+'.'+d.slice(6,8);
 }
 function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function highlightQuery(str, q){
+  var safe=esc(str||'');
+  if(!q) return safe;
+  var safeQ=esc(q).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  if(!safeQ) return safe;
+  return safe.replace(new RegExp('('+safeQ+')','gi'),'<mark style="background:#fbbf24;color:#1a1a1a;border-radius:2px;padding:0 1px">$1</mark>');
+}
 function fmtDur(sec){
   if(!sec) return '';
   var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60);
@@ -1145,6 +1152,7 @@ function updateChannelFilter(){
 
 /* ── 카드 렌더 ── */
 function renderCard(item, idx){
+  var q=searchInput.value.trim();
   var thumb=item.thumbnail||'https://img.youtube.com/vi/'+esc(item.id)+'/mqdefault.jpg';
   var dur=fmtDur(item.duration);
   var date=fmtDate(item.upload_date);
@@ -1158,9 +1166,9 @@ function renderCard(item, idx){
     +(dur?'<span class="dur">'+dur+'</span>':'')
     +'</div>'
     +'<div class="card-body">'
-    +'<div class="card-title" title="'+esc(item.title)+'">'+esc(item.title)+'</div>'
+    +'<div class="card-title" title="'+esc(item.title)+'">'+highlightQuery(item.title,q)+'</div>'
     +'<div class="card-meta">'
-    +'<span class="channel">'+esc(item.channel)+'</span>'
+    +'<span class="channel">'+highlightQuery(item.channel,q)+'</span>'
     +'<span class="mdot"></span>'
     +'<span>'+date+'</span>'
     +'<span class="mdot"></span>'
