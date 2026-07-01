@@ -111,6 +111,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._cleanup()
             elif path == "/api/update-install":
                 self._update_install()
+            elif path == "/api/update-notify":
+                self._update_notify(data)
             else:
                 self.send_error(404)
         except Exception as e:
@@ -539,6 +541,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         import threading
         threading.Thread(target=gui._do_install, daemon=True).start()
+        self._json({"ok": True})
+
+    def _update_notify(self, data: dict):
+        """대시보드 JS가 GitHub API로 새 버전을 발견했을 때 Python 다운로드를 트리거."""
+        gui = _gui
+        if not gui:
+            self._json({"ok": False}); return
+        if gui._update_info:
+            self._json({"ok": True, "already": True}); return
+        version = data.get("version", "")
+        url     = data.get("url", "")
+        notes   = data.get("notes", "")
+        if not version or not url:
+            self._json({"ok": False, "error": "missing version/url"}); return
+        import threading
+        info = {"version": version, "url": url, "notes": notes}
+        threading.Thread(target=gui.set_update_available, args=(info,),
+                         daemon=True, name="UpdateNotify").start()
         self._json({"ok": True})
 
     def _open_folder(self, qs):

@@ -1669,9 +1669,22 @@ function checkForUpdate(){
         var lv=latest.split('.').map(Number);
         for(var i=0;i<3;i++){
           if((lv[i]||0)>(cv[i]||0)){
-            var url=rel.assets&&rel.assets[0]?rel.assets[0].browser_download_url:rel.html_url;
-            _showUpdateBanner('v'+latest+' 버전이 출시되었습니다! ', url, 'v'+latest+' 다운로드', false);
-            showToast('v'+latest+' 업데이트가 있습니다','ok');
+            var dlUrl=rel.assets&&rel.assets[0]?rel.assets[0].browser_download_url:rel.html_url;
+            var notes=(rel.body||'').trim();
+            // 서버 측 자동 다운로드 트리거
+            fetch('/api/update-notify',{
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({version:latest, url:dlUrl, notes:notes})
+            }).then(function(r){ return r.json(); }).then(function(nd){
+              if(nd.ok) pollUpdateStatus();
+              else {
+                _showUpdateBanner('v'+latest+' 버전이 출시되었습니다!', dlUrl, 'v'+latest+' 다운로드', false);
+                showToast('v'+latest+' 업데이트가 있습니다','ok');
+              }
+            }).catch(function(){
+              _showUpdateBanner('v'+latest+' 버전이 출시되었습니다!', dlUrl, 'v'+latest+' 다운로드', false);
+            });
             return;
           }
           if((cv[i]||0)>(lv[i]||0)) return;
