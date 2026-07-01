@@ -111,15 +111,25 @@ if ($Release) {
 if ($DeployServer) {
     Write-Host ""
     Write-Host "[6/6] Deploy relay server..." -ForegroundColor Yellow
-    $SSH_KEY  = "$env:USERPROFILE\.ssh\oracle.key"
-    $SSH_HOST = "opc@217.142.229.237"
-    $SRV_PY   = "$ROOT\relay_server\server.py"
-    $REMOTE   = "/opt/streamsaver-relay"
+    $SSH_KEY   = "$env:USERPROFILE\.ssh\oracle.key"
+    $SSH_HOST  = "opc@217.142.229.237"
+    $SRV_PY    = "$ROOT\relay_server\server.py"
+    $BOT_PY    = "$ROOT\relay_server\discord_bot.py"
+    $REMOTE    = "/opt/streamsaver-relay"
 
+    # 두 파일 업로드
     & scp -i $SSH_KEY -o StrictHostKeyChecking=no $SRV_PY "${SSH_HOST}:/tmp/server_new.py"
-    if ($LASTEXITCODE -ne 0) { throw "scp failed" }
+    if ($LASTEXITCODE -ne 0) { throw "scp server.py failed" }
+    & scp -i $SSH_KEY -o StrictHostKeyChecking=no $BOT_PY "${SSH_HOST}:/tmp/discord_bot_new.py"
+    if ($LASTEXITCODE -ne 0) { throw "scp discord_bot.py failed" }
 
-    $cmd = "sudo cp /tmp/server_new.py $REMOTE/server.py && sudo systemctl restart streamsaver-relay"
+    $cmd = @(
+        "sudo cp /tmp/server_new.py $REMOTE/server.py",
+        "sudo cp /tmp/discord_bot_new.py $REMOTE/discord_bot.py",
+        "sudo systemctl restart streamsaver-relay",
+        "sleep 2",
+        "sudo systemctl restart streamsaver-bot || sudo systemctl start streamsaver-bot"
+    ) -join " && "
     & ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SSH_HOST $cmd
     if ($LASTEXITCODE -ne 0) { throw "server restart failed" }
 
@@ -127,5 +137,5 @@ if ($DeployServer) {
     $ts   = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     & ssh -i $SSH_KEY -o StrictHostKeyChecking=no $SSH_HOST "echo '$hash $ts' | sudo tee $REMOTE/deployed.txt > /dev/null"
 
-    Write-Host "     -> Deployed (commit: $($hash.Substring(0,8)))" -ForegroundColor Green
+    Write-Host "     -> Deployed relay+bot (commit: $($hash.Substring(0,8)))" -ForegroundColor Green
 }

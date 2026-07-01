@@ -15,6 +15,7 @@ _cm = None
 _dm = None
 _sw = None
 _gui = None
+_rc = None   # relay client
 
 
 def set_context(cm, dm):
@@ -172,11 +173,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception:
             disk_free_gb = 0
             disk_total_gb = 0
+        rc = _rc
         self._json({
             "cookie_valid":           cs.get("cookie_valid", False),
             "cookie_file":            cs.get("cookie_file", False),
             "cookie_days_remaining":  cs.get("cookie_days_remaining"),
             "edge_running":           cs.get("edge_running", False),
+            "relay_connected":        rc.connected if rc else False,
+            "bot_discord":            rc.bot_discord if rc else False,
             "active":                 ds.get("active", []),
             "queued":                 ds.get("queued", 0),
             "queue_list":             ds.get("queue_list", []),
@@ -564,12 +568,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def start(ctx=None):
-    global _cm, _dm, _sw, _gui
+    global _cm, _dm, _sw, _gui, _rc
     if ctx:
         _cm = ctx.cm
         _dm = ctx.dm
         _sw = getattr(ctx, "sw", None)
         _gui = getattr(ctx, "gui", None)
+        _rc = getattr(ctx, "rc", None)
     server = http.server.HTTPServer(("127.0.0.1", config.WEB_PORT), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

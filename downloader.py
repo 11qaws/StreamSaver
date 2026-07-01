@@ -464,6 +464,11 @@ class DownloadManager:
 
     def _post_download(self, task, info, is_membership, use_cookies, captured_file=None):
         # stdout에서 파싱한 실제 파일명 우선, 없으면 yt-dlp 재호출로 예측
+        # yt-dlp는 다운로드 중 .part 파일을 쓰고 완료 후 rename — .part 제거해서 실제 경로 확인
+        if captured_file and not os.path.exists(captured_file):
+            candidate = re.sub(r'\.part$', '', captured_file)
+            if os.path.exists(candidate):
+                captured_file = candidate
         if captured_file and os.path.exists(captured_file):
             fname = captured_file
             logger.debug("file path from stdout: %s", fname)
@@ -586,6 +591,7 @@ class DownloadManager:
             for t in self.active:
                 if t.id == task_id:
                     t.cancelled = True
+                    self._kill_tree(t.process)   # info 수집·다운로드 중 즉시 종료
                     return True
         new_queue = Queue()
         found = False
