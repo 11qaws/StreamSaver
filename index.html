@@ -233,6 +233,14 @@ header{
   position:absolute;left:11px;top:50%;transform:translateY(-50%);
   color:var(--text4);font-size:0.875rem;pointer-events:none
 }
+.controls .search-wrap input{ padding-right:28px }
+.controls .search-wrap .search-clear{
+  position:absolute;right:9px;top:50%;transform:translateY(-50%);
+  color:var(--text4);font-size:1rem;cursor:pointer;border:none;background:none;
+  padding:0;line-height:1;display:none
+}
+.controls .search-wrap.has-text .search-clear{display:block}
+.controls .search-wrap.has-text .search-clear:hover{color:var(--text)}
 .controls select{
   padding:8px 12px;border:1px solid var(--border);border-radius:8px;
   font-size:0.8125rem;background:var(--bg2);color:var(--text2);
@@ -689,9 +697,10 @@ header{
       <div class="chart-wrap" id="chart-wrap"></div>
     </div>
     <div class="controls">
-      <div class="search-wrap">
+      <div class="search-wrap" id="search-wrap">
         <span class="icon">🔍</span>
         <input type="text" id="search" placeholder="제목 또는 채널로 검색...">
+        <button class="search-clear" id="search-clear" tabindex="-1" title="검색 지우기">✕</button>
       </div>
       <select id="channel-filter"><option value="">전체 채널</option></select>
       <select id="sort">
@@ -1318,10 +1327,15 @@ chAddBtn.addEventListener('click',function(){
 });
 
 /* ── 이벤트 바인딩 ── */
+var searchWrap=document.getElementById('search-wrap');
+var searchClear=document.getElementById('search-clear');
+function _syncSearchClear(){ if(searchWrap) searchWrap.classList.toggle('has-text',!!searchInput.value); }
 searchInput.addEventListener('input',function(){
+  _syncSearchClear();
   clearTimeout(filterTimer);
   filterTimer=setTimeout(function(){ currentPage=1; render(applyFilters(allData)); },300);
 });
+if(searchClear) searchClear.addEventListener('click',function(){ searchInput.value=''; _syncSearchClear(); currentPage=1; render(applyFilters(allData)); searchInput.focus(); });
 channelFilter.addEventListener('change',function(){ currentPage=1; render(applyFilters(allData)); updateChannelFilter(); });
 document.getElementById('channel-chips').addEventListener('click',function(e){
   var btn=e.target.closest('.chip');
