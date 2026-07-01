@@ -161,6 +161,7 @@ header{
   transition:all .15s ease;flex-shrink:0
 }
 .btn-cancel-task:hover{background:#fee2e2;color:#ef4444;border-color:#fecaca}
+.btn-cancel-task.confirm{background:#ef4444;color:#fff;border-color:#ef4444}
 
 /* ── GH Pages 히어로 ── */
 .hero{padding:80px 24px 60px;text-align:center}
@@ -954,14 +955,25 @@ function updateActivePanel(active, queueList){
   activeTasks.innerHTML=html;
 }
 
-/* ── 취소 버튼 (이벤트 위임) ── */
+/* ── 취소 버튼 (이벤트 위임, 2-step 확인) ── */
+var _cancelPending = {};
 activeTasks.addEventListener('click',function(e){
   var btn=e.target.closest('.btn-cancel-task');
   if(!btn) return;
   var id=parseInt(btn.dataset.id);
-  btn.disabled=true; btn.textContent='...';
-  fetch('/api/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
-    .then(function(){ pollStatus(); }).catch(function(){ pollStatus(); });
+  if(_cancelPending[id]){
+    clearTimeout(_cancelPending[id]);
+    delete _cancelPending[id];
+    btn.disabled=true; btn.textContent='...';
+    fetch('/api/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+      .then(function(){ pollStatus(); }).catch(function(){ pollStatus(); });
+  } else {
+    btn.textContent='확인?'; btn.classList.add('confirm');
+    _cancelPending[id]=setTimeout(function(){
+      btn.textContent='취소'; btn.classList.remove('confirm');
+      delete _cancelPending[id];
+    },3000);
+  }
 });
 
 /* ── 상태 폴링 (단일 소스) ── */
