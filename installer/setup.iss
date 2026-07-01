@@ -1,5 +1,5 @@
 #define MyAppName "StreamSaver"
-#define MyAppVersion "1.1.15"
+#define MyAppVersion "1.1.16"
 #define MyAppPublisher "StreamSaver"
 #define MyAppExeName "StreamSaver.exe"
 #define RelayURL "ws://217.142.229.237:8765"
@@ -17,6 +17,8 @@ PrivilegesRequired=lowest
 OutputDir=Output
 OutputBaseFilename=StreamSaver_Setup_v{#MyAppVersion}
 SetupIconFile=assets\icon.ico
+WizardImageFile=assets\wizard_large.bmp
+WizardSmallImageFile=assets\wizard_small.bmp
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern

@@ -624,7 +624,8 @@ header{
 <!-- 업데이트 배너 -->
 <div class="update-banner app-only" id="update-banner">
   <span id="update-text">새 버전이 출시되었습니다!</span>
-  <a id="update-link" href="#" target="_blank">지금 다운로드</a>
+  <a id="update-link" href="#" target="_blank" style="display:none">다운로드</a>
+  <button id="update-install-btn" style="display:none;margin-left:10px;padding:3px 14px;background:#fff;color:#1d4ed8;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:0.85rem">지금 설치</button>
 </div>
 
 <!-- 다운로드 URL 입력 바 -->
@@ -1256,9 +1257,7 @@ function loadSettings(){
           for(var i=0;i<3;i++){ if((lv[i]||0)>(cv[i]||0)){newer=true;break;} if((cv[i]||0)>(lv[i]||0)) break; }
           if(newer){
             var url=rel.assets&&rel.assets[0]?rel.assets[0].browser_download_url:rel.html_url;
-            updateLink.href=url; updateLink.textContent='v'+latest+' 다운로드';
-            document.getElementById('update-text').textContent='v'+latest+' 버전이 출시되었습니다! ';
-            updateBanner.className='update-banner app-only visible';
+            _showUpdateBanner('v'+latest+' 버전이 출시되었습니다! ', url, 'v'+latest+' 다운로드', false);
             showToast('v'+latest+' 업데이트가 있습니다','ok');
           } else {
             showToast('최신 버전입니다 (v'+cur+')','ok');
@@ -1418,7 +1417,7 @@ function openModal(item){
   if(item.upload_to) rows.push(['Drive 업로드', item.upload_to]);
   if(item.file_path) rows.push(['파일 경로', item.file_path]);
   modalRows.innerHTML=rows.map(function(r){
-    return '<div class="modal-row"><span class="m-key">'+r[0]+'</span><span class="m-val">'+r[1]+'</span></div>';
+    return '<div class="modal-row"><span class="m-key">'+r[0]+'</span><span class="m-val">'+esc(String(r[1]))+'</span></div>';
   }).join('');
   var ytUrl='https://www.youtube.com/watch?v='+item.id;
   var _fileLocal = item.file_path && item.kept_local !== false;
@@ -1473,33 +1472,107 @@ function reDownload(url){
 }
 
 /* ── 업데이트 확인 ── */
-var updateBanner = document.getElementById('update-banner');
-var updateLink   = document.getElementById('update-link');
-function checkForUpdate(){
-  fetch('/api/version').then(function(r){ return r.json(); }).then(function(d){
-    var current=d.version;
-    var repo=d.repo||'11qaws/StreamSaver';
-    fetch('https://api.github.com/repos/'+repo+'/releases/latest',{
-      headers:{'Accept':'application/vnd.github+json'}
-    }).then(function(r){ return r.json(); }).then(function(rel){
-      var latest=(rel.tag_name||'').replace('v','');
-      if(!latest||!current) return;
-      var cv=current.split('.').map(Number);
-      var lv=latest.split('.').map(Number);
-      for(var i=0;i<3;i++){
-        if((lv[i]||0)>(cv[i]||0)){
-          var url=rel.assets&&rel.assets[0]?rel.assets[0].browser_download_url:rel.html_url;
-          updateLink.href=url;
-          updateLink.textContent='v'+latest+' 다운로드';
-          document.getElementById('update-text').textContent='v'+latest+' 버전이 출시되었습니다! ';
-          updateBanner.className='update-banner app-only visible';
-          return;
-        }
-        if((cv[i]||0)>(lv[i]||0)) return;
-      }
-    }).catch(function(){});
+var updateBanner     = document.getElementById('update-banner');
+var updateLink       = document.getElementById('update-link');
+var updateInstallBtn = document.getElementById('update-install-btn');
+var _updatePollTimer = null;
+
+function _showUpdateBanner(text, linkHref, linkText, showInstall){
+  document.getElementById('update-text').textContent=text;
+  if(linkHref){
+    updateLink.href=linkHref; updateLink.textContent=linkText||'다운로드';
+    updateLink.style.display=''; updateInstallBtn.style.display='none';
+  } else if(showInstall){
+    updateLink.style.display='none'; updateInstallBtn.style.display='';
+  } else {
+    updateLink.style.display='none'; updateInstallBtn.style.display='none';
+  }
+  updateBanner.className='update-banner app-only visible';
+}
+
+function pollUpdateStatus(){
+  fetch('/api/update-status').then(function(r){ return r.json(); }).then(function(d){
+    if(!d.available){ return; }
+    var v='v'+d.version;
+    if(d.ready){
+      _showUpdateBanner(v+' 업데이트가 설치 준비됨!', null, null, true);
+    } else if(d.downloading){
+      var pct=d.progress!=null?(' ('+d.progress+'%)'):'';
+      _showUpdateBanner(v+' 다운로드 중'+pct+'...', null, null, false);
+      _updatePollTimer=setTimeout(pollUpdateStatus, 3000);
+    } else {
+      _showUpdateBanner(v+' 업데이트가 있습니다!', null, null, false);
+    }
   }).catch(function(){});
 }
+
+if(updateInstallBtn){
+  updateInstallBtn.addEventListener('click',function(){
+    updateInstallBtn.disabled=true; updateInstallBtn.textContent='설치 중...';
+    fetch('/api/update-install',{method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
+      if(d.ok){ showToast('업데이트 설치를 시작합니다. 앱이 재시작됩니다.','ok'); }
+      else{ showToast(d.error||'설치 실패','err'); updateInstallBtn.disabled=false; updateInstallBtn.textContent='지금 설치'; }
+    }).catch(function(){ updateInstallBtn.disabled=false; updateInstallBtn.textContent='지금 설치'; });
+  });
+}
+
+function checkForUpdate(){
+  // First check server-side GUI update state
+  fetch('/api/update-status').then(function(r){ return r.json(); }).then(function(d){
+    if(d.available){
+      pollUpdateStatus();
+      return;
+    }
+    // Fallback: check GitHub API
+    fetch('/api/version').then(function(r){ return r.json(); }).then(function(vd){
+      var current=vd.version;
+      var repo=vd.repo||'11qaws/StreamSaver';
+      fetch('https://api.github.com/repos/'+repo+'/releases/latest',{
+        headers:{'Accept':'application/vnd.github+json'}
+      }).then(function(r){ return r.json(); }).then(function(rel){
+        var latest=(rel.tag_name||'').replace('v','');
+        if(!latest||!current) return;
+        var cv=current.split('.').map(Number);
+        var lv=latest.split('.').map(Number);
+        for(var i=0;i<3;i++){
+          if((lv[i]||0)>(cv[i]||0)){
+            var url=rel.assets&&rel.assets[0]?rel.assets[0].browser_download_url:rel.html_url;
+            _showUpdateBanner('v'+latest+' 버전이 출시되었습니다! ', url, 'v'+latest+' 다운로드', false);
+            showToast('v'+latest+' 업데이트가 있습니다','ok');
+            return;
+          }
+          if((cv[i]||0)>(lv[i]||0)) return;
+        }
+        showToast('최신 버전입니다 (v'+current+')','ok');
+      }).catch(function(){});
+    }).catch(function(){});
+  }).catch(function(){
+    // /api/update-status not available (GitHub Pages mode), fall back to GitHub
+    fetch('/api/version').then(function(r){ return r.json(); }).then(function(vd){
+      var current=vd.version;
+      var repo=vd.repo||'11qaws/StreamSaver';
+      fetch('https://api.github.com/repos/'+repo+'/releases/latest',{
+        headers:{'Accept':'application/vnd.github+json'}
+      }).then(function(r){ return r.json(); }).then(function(rel){
+        var latest=(rel.tag_name||'').replace('v','');
+        if(!latest||!current) return;
+        var cv=current.split('.').map(Number);
+        var lv=latest.split('.').map(Number);
+        for(var i=0;i<3;i++){
+          if((lv[i]||0)>(cv[i]||0)){
+            var url=rel.assets&&rel.assets[0]?rel.assets[0].browser_download_url:rel.html_url;
+            _showUpdateBanner('v'+latest+' 버전이 출시되었습니다! ', url, 'v'+latest+' 다운로드', false);
+            return;
+          }
+          if((cv[i]||0)>(lv[i]||0)) return;
+        }
+      }).catch(function(){});
+    }).catch(function(){});
+  });
+}
+
+// Poll update status on load (in case update was already detected by GUI)
+setTimeout(pollUpdateStatus, 5000);
 
 /* ── 토스트 알림 ── */
 var toastStack = document.getElementById('toast-stack');

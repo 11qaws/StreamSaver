@@ -14,6 +14,7 @@ _cache = {"history": None, "mtime": 0}
 _cm = None
 _dm = None
 _sw = None
+_gui = None
 
 
 def set_context(cm, dm):
@@ -72,6 +73,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._open_folder(qs)
             elif path == "/api/settings":
                 self._settings()
+            elif path == "/api/update-status":
+                self._update_status()
             elif path == "/api/export":
                 self._export(qs)
             else:
@@ -101,6 +104,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._download_add(data)
             elif path == "/api/cleanup":
                 self._cleanup()
+            elif path == "/api/update-install":
+                self._update_install()
             else:
                 self.send_error(404)
         except Exception as e:
@@ -451,6 +456,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "membership_count": membership_count,
         })
 
+    def _update_status(self):
+        gui = _gui
+        if not gui:
+            self._json({"available": False})
+            return
+        info = gui._update_info
+        if not info:
+            self._json({"available": False})
+            return
+        self._json({
+            "available":    True,
+            "version":      info.get("version", ""),
+            "notes":        info.get("notes", ""),
+            "downloading":  gui._update_progress is not None,
+            "progress":     gui._update_progress,
+            "ready":        gui._installer_path is not None,
+        })
+
+    def _update_install(self):
+        gui = _gui
+        if not gui:
+            self._json({"ok": False, "error": "not available"}, 503)
+            return
+        if not gui._installer_path:
+            self._json({"ok": False, "error": "installer not ready"}, 409)
+            return
+        import threading
+        threading.Thread(target=gui._confirm_and_install, daemon=True).start()
+        self._json({"ok": True})
+
     def _open_folder(self, qs):
         import subprocess
         file_path = (qs.get("path") or [""])[0].strip()
@@ -480,11 +515,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def start(ctx=None):
-    global _cm, _dm, _sw
+    global _cm, _dm, _sw, _gui
     if ctx:
         _cm = ctx.cm
         _dm = ctx.dm
         _sw = getattr(ctx, "sw", None)
+        _gui = getattr(ctx, "gui", None)
     server = http.server.HTTPServer(("127.0.0.1", config.WEB_PORT), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
