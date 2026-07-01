@@ -60,6 +60,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             if path == "/":
                 self._file(config.INDEX_HTML, "text/html; charset=utf-8")
+            elif path == "/favicon.ico":
+                self._file(config.FAVICON_ICO, "image/x-icon")
             elif path == "/api/history":
                 self._history(qs)
             elif path == "/api/stats":

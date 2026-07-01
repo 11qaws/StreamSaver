@@ -8,8 +8,9 @@ a = Analysis(
     pathex=[SRC],
     binaries=[],
     datas=[
-        (os.path.join(SRC, 'index.html'),          '.'),
-        (os.path.join(SRC, 'watch_channels.json'), '.'),
+        (os.path.join(SRC, 'index.html'),                    '.'),
+        (os.path.join(SRC, 'watch_channels.json'),           '.'),
+        (os.path.join(SPECPATH, 'assets', 'icon.ico'),       '.'),
     ],
     hiddenimports=[
         'pystray._win32',

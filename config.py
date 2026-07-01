@@ -40,6 +40,7 @@ CRASH_FILE          = os.path.join(LOG_DIR,  "crash.txt")
 RELAY_GUILD_FILE    = os.path.join(DATA_DIR, ".relay_guild")
 WATCH_CHANNELS_FILE = os.path.join(DATA_DIR, "watch_channels.json")
 INDEX_HTML   = os.path.join(_DATA_DIR, "index.html")   # PyInstaller _internal 안에 있음
+FAVICON_ICO  = os.path.join(_DATA_DIR, "icon.ico")
 WEB_PORT     = 8080
 
 if platform.system() == "Windows":
