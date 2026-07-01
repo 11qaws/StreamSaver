@@ -23,6 +23,7 @@ import logging
 import os
 import random
 import string
+import sys
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional
@@ -30,6 +31,7 @@ from typing import Optional
 import discord
 from discord import app_commands
 from discord.ext import commands
+import psutil
 import websockets
 
 logging.basicConfig(
@@ -42,7 +44,7 @@ logger = logging.getLogger("Relay")
 DISCORD_TOKEN  = os.environ["DISCORD_TOKEN"]
 WS_PORT        = int(os.getenv("WS_PORT", "8765"))
 WS_SECRET      = os.getenv("WS_SECRET", "")
-SERVER_VERSION = "1.0.12"
+SERVER_VERSION = "1.1.27"
 
 MAX_WS_CONNECTIONS = 100   # 동시 WebSocket 연결 최대 수
 
@@ -171,6 +173,29 @@ async def _cleanup_loop():
             raise
         except Exception as e:
             logger.warning("cleanup_loop error: %s", e)
+
+
+_MEMORY_LIMIT_MB = int(os.getenv("MEMORY_LIMIT_MB", "180"))
+
+async def _memory_watchdog():
+    """메모리 사용량 감시 — 임계값 초과 시 깨끗하게 종료 (systemd가 재시작).
+    하루에 한 번씩 얼어붙는 OOM 현상 방지."""
+    proc = psutil.Process()
+    while True:
+        try:
+            await asyncio.sleep(60)
+            rss_mb = proc.memory_info().rss / 1024 / 1024
+            logger.debug("Memory: %.1f MB / %d MB limit", rss_mb, _MEMORY_LIMIT_MB)
+            if rss_mb > _MEMORY_LIMIT_MB:
+                logger.warning(
+                    "Memory limit exceeded (%.1f MB > %d MB) — restarting cleanly",
+                    rss_mb, _MEMORY_LIMIT_MB,
+                )
+                sys.exit(1)   # systemd Restart=always 가 재시작
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("memory_watchdog error: %s", e)
 
 
 async def _send_cmd(guild_id: str, cmd: str, args: dict, timeout: float = 12.0) -> str:
@@ -567,8 +592,16 @@ class RelayCog(commands.Cog):
 
 class RelayBot(commands.Bot):
     def __init__(self):
-        intents = discord.Intents.default()
-        super().__init__(command_prefix=(), intents=intents)
+        # slash command 전용 — 메시지/멤버 캐시 불필요, 메모리 절약
+        intents = discord.Intents.none()
+        intents.guilds = True
+        super().__init__(
+            command_prefix=(),
+            intents=intents,
+            max_messages=None,          # 메시지 캐시 비활성화
+            chunk_guilds_at_startup=False,
+            member_cache_flags=discord.MemberCacheFlags.none(),
+        )
 
     async def setup_hook(self):
         await self.add_cog(RelayCog(self))
@@ -605,6 +638,7 @@ async def main():
 
     asyncio.create_task(_heartbeat_loop())
     asyncio.create_task(_cleanup_loop())
+    asyncio.create_task(_memory_watchdog())
 
     async with bot:
         await bot.start(DISCORD_TOKEN)

@@ -67,7 +67,10 @@ WorkingDirectory=/opt/streamsaver-relay
 EnvironmentFile=/opt/streamsaver-relay/.env
 ExecStart=/opt/streamsaver-relay/venv/bin/python server.py
 Restart=always
-RestartSec=10
+RestartSec=5
+StartLimitIntervalSec=120
+StartLimitBurst=5
+MemoryMax=500M
 StandardOutput=journal
 StandardError=journal
 
