@@ -305,7 +305,7 @@ class DownloadManager:
                 stall = time.time() - last_line[0]
                 if stall > stall_limit:
                     logger.warning("Task #%d stalled %.0fs — terminating", task.id, stall)
-                    task.process.terminate()
+                    self._kill_tree(task.process)
                     task.error = (f"{'라이브' if task.state == 'live' else '다운로드'} "
                                   f"응답 없음 {int(stall // 60)}분 초과")
                     self._emit("warning", task,
@@ -599,18 +599,32 @@ class DownloadManager:
         self.queue = new_queue
         return found or False
 
+    @staticmethod
+    def _kill_tree(proc):
+        """프로세스 + 모든 자식(ffmpeg 등) 강제 종료. Windows taskkill /T 사용."""
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            subprocess.run(
+                ['taskkill', '/F', '/T', '/PID', str(proc.pid)],
+                capture_output=True, creationflags=_NW,
+            )
+        except Exception as e:
+            logger.debug("taskkill error: %s", e)
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
     def shutdown(self):
-        """앱 종료 시 모든 활성 다운로드 프로세스 강제 종료."""
+        """앱 종료 시 모든 활성 다운로드 프로세스 + 자식 프로세스 강제 종료."""
         with self._lock:
             tasks = list(self.active)
         for task in tasks:
             task.cancelled = True
-            if task.process and task.process.poll() is None:
-                try:
-                    task.process.kill()
-                    logger.info("Killed download process for task #%d", task.id)
-                except Exception as e:
-                    logger.debug("Process kill error: %s", e)
+            if task.process:
+                self._kill_tree(task.process)
+                logger.info("Killed process tree for task #%d", task.id)
         while not self.queue.empty():
             try:
                 self.queue.get_nowait()

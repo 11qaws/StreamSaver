@@ -1,5 +1,5 @@
 #define MyAppName "StreamSaver"
-#define MyAppVersion "1.1.28"
+#define MyAppVersion "1.1.29"
 #define MyAppPublisher "StreamSaver"
 #define MyAppExeName "StreamSaver.exe"
 #define RelayURL "ws://217.142.229.237:8765"
