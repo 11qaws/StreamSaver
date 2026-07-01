@@ -648,6 +648,7 @@ header{
     <span class="label">📥 URL 추가</span>
     <input type="text" id="dl-url-input" placeholder="YouTube URL을 입력하세요...">
     <button class="btn-dl" id="dl-add-btn">다운로드</button>
+    <button class="btn-dl" id="bulk-open-btn" title="여러 URL 한 번에 추가" style="background:var(--bg2);color:var(--text2);border:1px solid var(--border2);flex-shrink:0">+ 여러 개</button>
   </div>
   <div id="url-preview" style="display:none;margin:8px 0 2px;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;display:none;align-items:center;gap:12px;min-height:64px">
     <img id="url-preview-thumb" src="" alt="" style="width:96px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--bg3)">
@@ -801,6 +802,25 @@ header{
 </section>
 
 </main>
+
+<!-- URL 일괄 추가 모달 -->
+<div class="modal-overlay" id="bulk-overlay" style="display:none" onclick="if(event.target===this)closeBulkModal()">
+  <div class="modal" style="max-width:480px">
+    <button class="modal-close" onclick="closeBulkModal()">✕</button>
+    <div class="modal-title" style="margin-bottom:4px">📋 URL 일괄 추가</div>
+    <div style="font-size:0.8rem;color:var(--text3);margin-bottom:12px">한 줄에 YouTube URL 하나씩 입력하세요</div>
+    <textarea id="bulk-textarea" rows="8" placeholder="https://www.youtube.com/watch?v=...&#10;https://youtu.be/...&#10;https://www.youtube.com/watch?v=..." style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:0.85rem;font-family:inherit;resize:vertical;line-height:1.5"></textarea>
+    <div id="bulk-count" style="font-size:0.82rem;color:var(--text3);margin:8px 0 14px;min-height:1.2em"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="modal-btn secondary" onclick="closeBulkModal()">취소</button>
+      <button class="modal-btn primary" id="bulk-submit-btn" disabled>추가</button>
+    </div>
+    <div id="bulk-progress" style="display:none;margin-top:12px">
+      <div style="font-size:0.82rem;color:var(--text3);margin-bottom:6px" id="bulk-progress-text"></div>
+      <div style="height:4px;background:var(--border);border-radius:2px"><div id="bulk-progress-bar" style="height:100%;background:var(--accent);border-radius:2px;transition:width .3s;width:0%"></div></div>
+    </div>
+  </div>
+</div>
 
 <!-- 단축키 도움말 모달 -->
 <div class="modal-overlay" id="hotkey-overlay" style="display:none" onclick="if(event.target===this)closeHotkeyModal()">
@@ -1811,6 +1831,8 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){
     var hko=document.getElementById('hotkey-overlay');
     if(hko&&hko.style.display!=='none') closeHotkeyModal();
+    var bko=document.getElementById('bulk-overlay');
+    if(bko&&bko.style.display!=='none') closeBulkModal();
   }
   // 좌우 방향키로 페이지 이동 (입력 필드, 모달 외부에서)
   var activeEl=document.activeElement.tagName;
@@ -1830,6 +1852,84 @@ if(refreshBtn){
     setTimeout(function(){ refreshBtn.classList.remove('spin'); }, 600);
   });
 }
+
+/* ── URL 일괄 추가 ── */
+var _YT_URL_RE = /https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?[^\s]*v=|shorts\/)|youtu\.be\/)[^\s]+/g;
+var bulkTextarea   = document.getElementById('bulk-textarea');
+var bulkCount      = document.getElementById('bulk-count');
+var bulkSubmitBtn  = document.getElementById('bulk-submit-btn');
+var bulkProgressEl = document.getElementById('bulk-progress');
+var bulkProgressTx = document.getElementById('bulk-progress-text');
+var bulkProgressBr = document.getElementById('bulk-progress-bar');
+
+function _parseBulkUrls(){
+  if(!bulkTextarea) return [];
+  var text=bulkTextarea.value;
+  var matches=text.match(_YT_URL_RE)||[];
+  return [...new Set(matches)];
+}
+function _updateBulkCount(){
+  var urls=_parseBulkUrls();
+  if(!bulkCount||!bulkSubmitBtn) return;
+  if(urls.length===0){
+    bulkCount.textContent='';
+    bulkCount.style.color='var(--text3)';
+    bulkSubmitBtn.disabled=true;
+    bulkSubmitBtn.textContent='추가';
+  } else {
+    bulkCount.textContent='YouTube URL '+urls.length+'개 감지됨';
+    bulkCount.style.color='var(--accent)';
+    bulkSubmitBtn.disabled=false;
+    bulkSubmitBtn.textContent=urls.length+'개 추가';
+  }
+}
+function openBulkModal(){
+  var o=document.getElementById('bulk-overlay');
+  if(!o) return;
+  if(bulkTextarea) bulkTextarea.value='';
+  if(bulkProgressEl) bulkProgressEl.style.display='none';
+  if(bulkSubmitBtn){ bulkSubmitBtn.disabled=true; bulkSubmitBtn.textContent='추가'; }
+  if(bulkCount) bulkCount.textContent='';
+  o.style.display='flex';
+  setTimeout(function(){ if(bulkTextarea) bulkTextarea.focus(); },50);
+}
+function closeBulkModal(){
+  var o=document.getElementById('bulk-overlay');
+  if(o) o.style.display='none';
+}
+if(bulkTextarea) bulkTextarea.addEventListener('input', _updateBulkCount);
+var bulkOpenBtn=document.getElementById('bulk-open-btn');
+if(bulkOpenBtn) bulkOpenBtn.addEventListener('click', openBulkModal);
+
+if(bulkSubmitBtn) bulkSubmitBtn.addEventListener('click', function(){
+  var urls=_parseBulkUrls();
+  if(!urls.length) return;
+  bulkSubmitBtn.disabled=true;
+  if(bulkTextarea) bulkTextarea.disabled=true;
+  bulkProgressEl.style.display='block';
+  var done=0, failed=0;
+  function next(){
+    if(done+failed>=urls.length){
+      bulkProgressTx.textContent=(done+'개 추가 완료'+(failed?' ('+failed+'개 실패)':''));
+      showToast(done+'개 추가됨'+(failed?' ('+failed+'개 실패)':''), failed?'err':'ok');
+      pollStatus();
+      setTimeout(function(){
+        if(bulkTextarea) bulkTextarea.disabled=false;
+        closeBulkModal();
+      }, 1200);
+      return;
+    }
+    var url=urls[done+failed];
+    var idx=done+failed+1;
+    bulkProgressTx.textContent=idx+' / '+urls.length+' 처리 중...';
+    bulkProgressBr.style.width=Math.round(idx/urls.length*100)+'%';
+    fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d.ok) done++; else failed++; next(); })
+      .catch(function(){ failed++; next(); });
+  }
+  next();
+});
 
 /* ── 컴팩트 뷰 토글 ── */
 var _compact = localStorage.getItem('ss-compact')==='1';
