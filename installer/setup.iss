@@ -18,7 +18,6 @@ OutputDir=Output
 OutputBaseFilename=StreamSaver_Setup_v{#MyAppVersion}
 SetupIconFile=assets\icon.ico
 WizardImageFile=assets\wizard_large.bmp
-WizardSmallImageFile=assets\wizard_small.bmp
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
