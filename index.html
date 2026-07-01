@@ -623,6 +623,9 @@ header{
   </div>
 </div>
 
+<!-- 상단 이동 버튼 -->
+<button id="scroll-top-btn" title="맨 위로" style="display:none;position:fixed;bottom:24px;right:24px;z-index:999;width:40px;height:40px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:1.2rem;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);opacity:.85">↑</button>
+
 <!-- 업데이트 배너 -->
 <div class="update-banner app-only" id="update-banner">
   <span id="update-text">새 버전이 출시되었습니다!</span>
@@ -901,8 +904,11 @@ function setText(id, val){
 function updateStatusBar(st){
   setDot('dot-bot', st.edge_running?'green':'red');
   setText('val-bot', st.edge_running?'온라인':'오프라인');
-  setDot('dot-cookie', st.cookie_valid?'green':(st.cookie_file?'red':'gray'));
-  setText('val-cookie', st.cookie_valid?'유효':(st.cookie_file?'만료됨':'없음'));
+  var ckDays=st.cookie_days_remaining;
+  setDot('dot-cookie', st.cookie_valid?(ckDays!==null&&ckDays!==undefined&&ckDays<=7?'red':'green'):(st.cookie_file?'red':'gray'));
+  var ckLabel=st.cookie_valid?'유효':(st.cookie_file?'만료됨':'없음');
+  if(st.cookie_valid&&ckDays!==null&&ckDays!==undefined) ckLabel+=' ('+ckDays+'일)';
+  setText('val-cookie', ckLabel);
   setText('val-disk', st.disk_free_gb!==undefined ? st.disk_free_gb+' GB 여유' : '-');
   if(st.disk_total_gb>0){
     var usedPct=Math.round((1-st.disk_free_gb/st.disk_total_gb)*100);
@@ -1705,6 +1711,15 @@ if(refreshBtn){
     fetchHistory().catch(function(){});
     setTimeout(function(){ refreshBtn.classList.remove('spin'); }, 600);
   });
+}
+
+/* ── 상단 이동 버튼 ── */
+var scrollTopBtn = document.getElementById('scroll-top-btn');
+if(scrollTopBtn){
+  window.addEventListener('scroll', function(){
+    scrollTopBtn.style.display = window.scrollY > 300 ? 'block' : 'none';
+  }, {passive:true});
+  scrollTopBtn.addEventListener('click', function(){ window.scrollTo({top:0, behavior:'smooth'}); });
 }
 
 /* ── 기록 정리 ── */

@@ -171,14 +171,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             disk_free_gb = 0
             disk_total_gb = 0
         self._json({
-            "cookie_valid": cs.get("cookie_valid", False),
-            "cookie_file": cs.get("cookie_file", False),
-            "edge_running": cs.get("edge_running", False),
-            "active": ds.get("active", []),
-            "queued": ds.get("queued", 0),
-            "queue_list": ds.get("queue_list", []),
-            "disk_free_gb": disk_free_gb,
-            "disk_total_gb": disk_total_gb,
+            "cookie_valid":           cs.get("cookie_valid", False),
+            "cookie_file":            cs.get("cookie_file", False),
+            "cookie_days_remaining":  cs.get("cookie_days_remaining"),
+            "edge_running":           cs.get("edge_running", False),
+            "active":                 ds.get("active", []),
+            "queued":                 ds.get("queued", 0),
+            "queue_list":             ds.get("queue_list", []),
+            "disk_free_gb":           disk_free_gb,
+            "disk_total_gb":          disk_total_gb,
         })
 
     def _settings(self):
