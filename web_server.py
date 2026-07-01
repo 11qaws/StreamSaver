@@ -77,6 +77,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._update_status()
             elif path == "/api/export":
                 self._export(qs)
+            elif path == "/api/video-info":
+                self._video_info(qs)
             else:
                 self.send_error(404)
         except Exception as e:
@@ -203,6 +205,48 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "cookie_valid":           cs.get("cookie_valid", False),
             "cookie_days_remaining":  cs.get("cookie_days_remaining"),
         })
+
+    def _video_info(self, qs):
+        import re, subprocess
+        url = (qs.get("url") or [""])[0].strip()
+        if not url:
+            self._json({"error": "no url"}, 400)
+            return
+        if not re.search(r'(youtube\.com/watch|youtu\.be/|youtube\.com/shorts)', url):
+            self._json({"error": "not a youtube url"}, 400)
+            return
+        try:
+            result = subprocess.run(
+                [config.YT_DLP, "--dump-json", "--no-playlist", "--skip-download", "-q", url],
+                capture_output=True, text=True, timeout=15,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                self._json({"error": "fetch failed"}, 502)
+                return
+            info = json.loads(result.stdout)
+            vid_id = info.get("id", "")
+            in_archive = False
+            if vid_id and os.path.exists(config.ARCHIVE_FILE):
+                try:
+                    with open(config.ARCHIVE_FILE, encoding="utf-8") as f:
+                        in_archive = any(vid_id in ln for ln in f)
+                except Exception:
+                    pass
+            self._json({
+                "id":          vid_id,
+                "title":       info.get("title", ""),
+                "channel":     info.get("channel") or info.get("uploader", ""),
+                "duration":    info.get("duration"),
+                "thumbnail":   info.get("thumbnail", ""),
+                "upload_date": info.get("upload_date", ""),
+                "in_archive":  in_archive,
+            })
+        except subprocess.TimeoutExpired:
+            self._json({"error": "timeout"}, 504)
+        except Exception as e:
+            logger.warning(f"video-info error: {e}")
+            self._json({"error": str(e)}, 500)
 
     def _export(self, qs):
         history = _load_history()

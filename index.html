@@ -270,6 +270,15 @@ header{
   border-radius:12px;transition:all .15s ease;cursor:pointer
 }
 .card:hover{background:var(--bg2)}
+/* 컴팩트 뷰 */
+.cards.compact .card{padding:7px 10px;margin-bottom:2px;gap:10px;border-radius:8px;border-bottom:1px solid var(--border);border-radius:0}
+.cards.compact .card:first-child{border-radius:8px 8px 0 0}
+.cards.compact .card:last-child{border-bottom:none;border-radius:0 0 8px 8px}
+.cards.compact .card-thumb{width:64px;height:36px;border-radius:4px}
+.cards.compact .card-thumb .dur{font-size:0.65rem;padding:0 3px}
+.cards.compact .card-title{font-size:0.8125rem;margin-bottom:2px}
+.cards.compact .card-meta{font-size:0.75rem;gap:5px}
+.cards.compact .card-badges{display:none}
 .card-thumb{
   width:160px;height:90px;border-radius:8px;overflow:hidden;
   flex-shrink:0;background:var(--bg3);position:relative
@@ -640,6 +649,15 @@ header{
     <input type="text" id="dl-url-input" placeholder="YouTube URL을 입력하세요...">
     <button class="btn-dl" id="dl-add-btn">다운로드</button>
   </div>
+  <div id="url-preview" style="display:none;margin:8px 0 2px;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;display:none;align-items:center;gap:12px;min-height:64px">
+    <img id="url-preview-thumb" src="" alt="" style="width:96px;height:54px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--bg3)">
+    <div style="flex:1;min-width:0">
+      <div id="url-preview-title" style="font-size:0.875rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      <div id="url-preview-meta" style="font-size:0.78rem;color:var(--text3);margin-top:3px"></div>
+      <div id="url-preview-badge" style="margin-top:4px"></div>
+    </div>
+    <div id="url-preview-loading" style="display:none;color:var(--text3);font-size:0.8rem">불러오는 중...</div>
+  </div>
 </div>
 
 <!-- 토스트 알림 컨테이너 -->
@@ -736,6 +754,7 @@ header{
       <span id="result-info"></span>
       <span style="display:flex;gap:8px;align-items:center">
         <span id="last-update" style="font-size:0.75rem;color:var(--text4)"></span>
+        <button id="view-toggle-btn" title="컴팩트 뷰 전환" style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text3);font-size:0.8rem;cursor:pointer">☰</button>
         <a class="export-link" href="/api/export?format=csv" download title="CSV로 내보내기">⬇ CSV</a>
         <a class="export-link" href="/api/export?format=json" download title="JSON으로 내보내기">⬇ JSON</a>
       </span>
@@ -1214,8 +1233,15 @@ function render(filtered){
   var total=filtered.length;
   if(total===0){
     cardsEl.style.display='none';
-    emptyState.style.display='block';
     paginationEl.style.display='none';
+    var hint='';
+    if(searchInput.value) hint+=' "'+searchInput.value+'"';
+    if(channelFilter.value) hint+=' ['+channelFilter.value+']';
+    if(periodSelect.value) hint+=' (기간 필터)';
+    if(membershipCheck.checked) hint+=' (멤버십만)';
+    emptyState.innerHTML='<div class="emoji">🔍</div><p>검색 결과가 없습니다'+(hint?'<br><small style="color:var(--text3)">'+esc(hint.trim())+'</small>':'')+'</p>'
+      +(hint?'<button onclick="resetAllFilters&&resetAllFilters()" style="margin-top:8px;padding:5px 14px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);cursor:pointer;font-size:0.85rem">✕ 필터 초기화</button>':'');
+    emptyState.style.display='block';
     resultInfo.textContent='결과 없음';
     return;
   }
@@ -1225,7 +1251,8 @@ function render(filtered){
   var pageItems=filtered.slice(start,start+PER_PAGE);
   cardsEl.innerHTML=pageItems.map(function(item,i){ return renderCard(item,i); }).join('');
   totalPages=Math.ceil(total/PER_PAGE)||1;
-  resultInfo.textContent=total+'개 중 '+pageItems.length+'개 표시';
+  var totalSz=filtered.reduce(function(s,e){ return s+(e.file_size||0); },0);
+  resultInfo.textContent=total+'개 중 '+pageItems.length+'개 표시'+(totalSz?' · '+fmtSize(totalSz):'');
   if(totalPages>1){
     paginationEl.style.display='flex';
     pageInfo.textContent=currentPage+' / '+totalPages+' 페이지';
@@ -1233,9 +1260,9 @@ function render(filtered){
     var maxB=5, sp=Math.max(1,currentPage-Math.floor(maxB/2));
     var ep=Math.min(totalPages,sp+maxB-1);
     if(ep-sp+1<maxB) sp=Math.max(1,ep-maxB+1);
-    if(currentPage>1) html+='<button data-page="'+(currentPage-1)+'">‹</button>';
+    if(currentPage>1){ html+='<button data-page="1" title="첫 페이지">«</button>'; html+='<button data-page="'+(currentPage-1)+'">‹</button>'; }
     for(var p=sp;p<=ep;p++) html+='<button data-page="'+p+'"'+(p===currentPage?' class="active"':'')+'>'+p+'</button>';
-    if(currentPage<totalPages) html+='<button data-page="'+(currentPage+1)+'">›</button>';
+    if(currentPage<totalPages){ html+='<button data-page="'+(currentPage+1)+'">›</button>'; html+='<button data-page="'+totalPages+'" title="마지막 페이지">»</button>'; }
     pageButtons.innerHTML=html;
     Array.from(pageButtons.querySelectorAll('button')).forEach(function(btn){
       btn.addEventListener('click',function(){ currentPage=parseInt(btn.dataset.page); render(applyFilters(allData)); });
@@ -1689,16 +1716,75 @@ dlAddBtn.addEventListener('click', function(){ submitDownload(dlUrlInput.value.t
 dlUrlInput.addEventListener('keydown', function(e){
   if(e.key==='Enter') submitDownload(dlUrlInput.value.trim());
 });
-// 붙여넣기 시 YouTube URL 자동 인식
+
+/* ── URL 프리뷰 ── */
+var _urlPreviewEl  = document.getElementById('url-preview');
+var _previewTimer  = null;
+var _previewUrl    = '';
+var _YT_RE = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+
+function _hideUrlPreview(){
+  if(_urlPreviewEl){ _urlPreviewEl.style.display='none'; }
+  _previewUrl='';
+}
+function _showUrlPreview(info){
+  if(!_urlPreviewEl) return;
+  document.getElementById('url-preview-loading').style.display='none';
+  document.getElementById('url-preview-thumb').src=info.thumbnail||'';
+  document.getElementById('url-preview-title').textContent=info.title||'';
+  var dur=info.duration?fmtDur(info.duration):'';
+  var date=info.upload_date?fmtDate(info.upload_date):'';
+  var meta=[info.channel,dur,date].filter(Boolean).join(' · ');
+  document.getElementById('url-preview-meta').textContent=meta;
+  var badge=document.getElementById('url-preview-badge');
+  badge.innerHTML=info.in_archive
+    ?'<span style="font-size:0.75rem;color:#f59e0b;font-weight:600">⚠ 이미 다운로드된 영상입니다 (강제 다운로드하려면 그냥 제출)</span>'
+    :'';
+  _urlPreviewEl.style.display='flex';
+}
+function _fetchUrlPreview(url){
+  if(!_urlPreviewEl) return;
+  _urlPreviewEl.style.display='flex';
+  document.getElementById('url-preview-thumb').src='';
+  document.getElementById('url-preview-title').textContent='';
+  document.getElementById('url-preview-meta').textContent='';
+  document.getElementById('url-preview-badge').innerHTML='';
+  document.getElementById('url-preview-loading').style.display='block';
+  _previewUrl=url;
+  fetch('/api/video-info?url='+encodeURIComponent(url))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(_previewUrl!==url) return;
+      document.getElementById('url-preview-loading').style.display='none';
+      if(d.error){ _urlPreviewEl.style.display='none'; return; }
+      _showUrlPreview(d);
+    })
+    .catch(function(){ if(_previewUrl===url) _urlPreviewEl.style.display='none'; });
+}
+
+dlUrlInput.addEventListener('input', function(){
+  clearTimeout(_previewTimer);
+  var v=dlUrlInput.value.trim();
+  if(!_YT_RE.test(v)){ _hideUrlPreview(); return; }
+  _previewTimer=setTimeout(function(){ _fetchUrlPreview(v); }, 600);
+});
 dlUrlInput.addEventListener('paste', function(e){
+  clearTimeout(_previewTimer);
   setTimeout(function(){
     var v=dlUrlInput.value.trim();
-    if(v.includes('youtube.com')||v.includes('youtu.be')){
+    if(_YT_RE.test(v)){
       dlUrlInput.style.borderColor='var(--accent)';
       setTimeout(function(){ dlUrlInput.style.borderColor=''; }, 1500);
-    }
+      _fetchUrlPreview(v);
+    } else { _hideUrlPreview(); }
   }, 0);
 });
+
+var _origSubmit=submitDownload;
+submitDownload=function(url){
+  _hideUrlPreview();
+  _origSubmit(url);
+};
 // 키보드 단축키: D키로 URL 입력란 포커스 (모달 닫혀있을 때)
 document.addEventListener('keydown',function(e){
   if(e.key==='t'&&!e.ctrlKey&&!e.metaKey&&!currentModal&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){
@@ -1742,6 +1828,22 @@ if(refreshBtn){
     pollStatus();
     fetchHistory().catch(function(){});
     setTimeout(function(){ refreshBtn.classList.remove('spin'); }, 600);
+  });
+}
+
+/* ── 컴팩트 뷰 토글 ── */
+var _compact = localStorage.getItem('ss-compact')==='1';
+if(_compact && cardsEl) cardsEl.classList.add('compact');
+var viewToggleBtn = document.getElementById('view-toggle-btn');
+if(viewToggleBtn){
+  viewToggleBtn.title = _compact ? '카드 뷰로 전환' : '컴팩트 뷰로 전환';
+  viewToggleBtn.textContent = _compact ? '⊞' : '☰';
+  viewToggleBtn.addEventListener('click', function(){
+    _compact = !_compact;
+    localStorage.setItem('ss-compact', _compact ? '1' : '0');
+    if(cardsEl){ cardsEl.classList.toggle('compact', _compact); }
+    viewToggleBtn.title = _compact ? '카드 뷰로 전환' : '컴팩트 뷰로 전환';
+    viewToggleBtn.textContent = _compact ? '⊞' : '☰';
   });
 }
 
