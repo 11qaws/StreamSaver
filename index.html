@@ -1094,7 +1094,7 @@ function applyFilters(all){
 /* ── 헤더 통계 ── */
 function updateHeaderStats(){
   var channels={}, totalSize=0, todayCount=0;
-  var todayStr=new Date().toISOString().slice(0,10);
+  var _d=new Date(); var todayStr=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
   allData.forEach(function(e){
     channels[e.channel||'Unknown']=1;
     totalSize+=e.file_size||0;
