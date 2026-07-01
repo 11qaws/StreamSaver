@@ -1212,7 +1212,9 @@ function loadSettings(){
   fetch('/api/settings').then(function(r){ return r.json(); }).then(function(d){
     var diskPct=d.disk_total_gb>0?Math.round((1-d.disk_free_gb/d.disk_total_gb)*100):0;
     el.innerHTML='<div class="settings-grid">'
-      +'<div class="setting-card"><div class="setting-label">버전</div><div class="setting-value">v'+d.version+'</div></div>'
+      +'<div class="setting-card"><div class="setting-label">버전</div><div class="setting-value" style="display:flex;align-items:center;gap:8px">v'+d.version
+        +'<button id="btn-check-update" style="font-size:0.75rem;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text3);cursor:pointer">업데이트 확인</button>'
+        +'</div></div>'
       +'<div class="setting-card"><div class="setting-label">최대 동시 다운로드</div><div class="setting-value">'+d.max_parallel+'개</div></div>'
       +'<div class="setting-card"><div class="setting-label">채널 감시 주기</div><div class="setting-value">'+Math.round(d.watch_poll_interval/60)+'분</div></div>'
       +'<div class="setting-card"><div class="setting-label">디스크 사용</div><div class="setting-value">'+(d.disk_total_gb-d.disk_free_gb).toFixed(1)+' / '+d.disk_total_gb+' GB ('+diskPct+'%)</div>'
@@ -1229,6 +1231,29 @@ function loadSettings(){
         +'<button class="modal-btn secondary" onclick="runCleanup()">🗑 파일 없는 항목 정리</button>'
         +'</div>'
       +'</div>';
+    var ubtn=document.getElementById('btn-check-update');
+    if(ubtn) ubtn.addEventListener('click',function(){
+      ubtn.disabled=true; ubtn.textContent='확인 중...';
+      var repo=d.repo||'11qaws/StreamSaver';
+      var cur=d.version||'0.0.0';
+      fetch('https://api.github.com/repos/'+repo+'/releases/latest',{headers:{Accept:'application/vnd.github+json'}})
+        .then(function(r){ return r.json(); }).then(function(rel){
+          var latest=(rel.tag_name||'').replace(/^v/,'');
+          var cv=cur.split('.').map(Number), lv=latest.split('.').map(Number);
+          var newer=false;
+          for(var i=0;i<3;i++){ if((lv[i]||0)>(cv[i]||0)){newer=true;break;} if((cv[i]||0)>(lv[i]||0)) break; }
+          if(newer){
+            var url=rel.assets&&rel.assets[0]?rel.assets[0].browser_download_url:rel.html_url;
+            updateLink.href=url; updateLink.textContent='v'+latest+' 다운로드';
+            document.getElementById('update-text').textContent='v'+latest+' 버전이 출시되었습니다! ';
+            updateBanner.className='update-banner app-only visible';
+            showToast('v'+latest+' 업데이트가 있습니다','ok');
+          } else {
+            showToast('최신 버전입니다 (v'+cur+')','ok');
+          }
+          ubtn.textContent='업데이트 확인'; ubtn.disabled=false;
+        }).catch(function(){ showToast('업데이트 확인 실패','err'); ubtn.textContent='업데이트 확인'; ubtn.disabled=false; });
+    });
   }).catch(function(){ el.innerHTML='<p style="color:var(--text3);padding:16px">설정을 불러오지 못했습니다.</p>'; });
 }
 
