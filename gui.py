@@ -1006,9 +1006,11 @@ class GUIManager:
             flags = (getattr(subprocess, "DETACHED_PROCESS", 0) |
                      getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) |
                      _NW)
-            subprocess.Popen(
-                [sys.executable, os.path.join(config.BASE_DIR, "main.py")],
-                creationflags=flags, cwd=config.BASE_DIR)
+            if getattr(sys, "frozen", False):
+                cmd = [sys.executable]
+            else:
+                cmd = [sys.executable, os.path.join(config.BASE_DIR, "main.py")]
+            subprocess.Popen(cmd, creationflags=flags, cwd=config.BASE_DIR)
         except Exception as e:
             logger.error("Restart failed: %s", e)
         os._exit(0)
@@ -1215,7 +1217,16 @@ class GUIManager:
             if installer and os.path.exists(installer):
                 try:
                     import updater
+                    # cleanup 먼저 — 진행 중인 다운로드 정지, Edge 종료
+                    if self.ctx:
+                        self.ctx.cleanup()
+                    if self._icon:
+                        try:
+                            self._icon.stop()
+                        except Exception:
+                            pass
                     updater.install_update(installer)
+                    os._exit(0)
                 except Exception as e:
                     logger.error("Install failed: %s", e)
                     self.notify("StreamSaver", f"설치 실패: {e}")
