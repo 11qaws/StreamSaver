@@ -857,7 +857,7 @@ header{
 </div>
 
 <!-- 카드 상세 모달 -->
-<div class="modal-overlay" id="modal-overlay">
+<div class="modal-overlay" id="modal-overlay" style="display:none">
   <div class="modal">
     <button class="modal-close" id="modal-close">✕</button>
     <img class="modal-thumb" id="modal-thumb" src="" alt="">
@@ -1565,10 +1565,13 @@ function openModal(item){
     var fbtn = document.getElementById('modal-folder-btn');
     if(fbtn) fbtn.addEventListener('click', function(){ openFileFolder(item.file_path); });
   }
+  modalOverlay.style.display='flex';
+  void modalOverlay.offsetWidth;
   modalOverlay.classList.add('open');
 }
 function closeModal(){
   modalOverlay.classList.remove('open');
+  setTimeout(function(){ if(!modalOverlay.classList.contains('open')) modalOverlay.style.display='none'; }, 160);
   currentModal=null;
 }
 modalClose.addEventListener('click', closeModal);
