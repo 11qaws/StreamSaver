@@ -34,7 +34,7 @@ logger = logging.getLogger("DiscordBot")
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 IPC_HOST      = os.getenv("IPC_HOST", "127.0.0.1")
 IPC_PORT      = int(os.getenv("IPC_PORT", "8766"))
-BOT_VERSION   = "1.2.3"
+BOT_VERSION   = "1.2.4"
 
 # cmd cooldown 추적
 _cooldown: dict[str, float] = {}

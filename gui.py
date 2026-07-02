@@ -210,11 +210,11 @@ class GUIManager:
             if animated:
                 if self._anim_state != s:
                     self._start_anim(s)
-                # 아이콘 갱신은 애니메이션 스레드가 담당
             else:
                 self._stop_anim()
                 icon.icon = _make_icon(s)
             icon.title = self._tooltip(s)
+            icon.update_menu()
         except Exception as e:
             logger.debug("Icon refresh error: %s", e)
 
@@ -1083,14 +1083,9 @@ class GUIManager:
         def _run():
             try:
                 import updater
-                if self.ctx:
-                    self.ctx.cleanup()
-                if self._icon:
-                    try:
-                        self._icon.stop()
-                    except Exception:
-                        pass
+                # 인스톨러를 먼저 실행 — 설치 프로그램이 직접 기존 프로세스를 종료함
                 updater.install_update(installer)
+                import time as _t; _t.sleep(1)
                 os._exit(0)
             except Exception as e:
                 logger.error("Install failed: %s", e)
