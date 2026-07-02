@@ -714,7 +714,7 @@ header{
       <code style="background:var(--bg3);padding:3px 8px;border-radius:4px">http://localhost:8080</code>에 접속하세요
     </p>
   </div>
-  <div class="gh-footer">StreamSaver &middot; MIT License</div>
+  <div class="gh-footer">StreamSaver &middot; MIT License &middot; <span id="footer-version"></span></div>
 </section>
 
 <!-- 대시보드 모드 -->
@@ -1660,6 +1660,8 @@ function checkForUpdate(){
     // Fallback: check GitHub API
     fetch('/api/version').then(function(r){ return r.json(); }).then(function(vd){
       var current=vd.version;
+      var fv=document.getElementById('footer-version');
+      if(fv&&current) fv.textContent='v'+current;
       var repo=vd.repo||'11qaws/StreamSaver';
       fetch('https://api.github.com/repos/'+repo+'/releases/latest',{
         headers:{'Accept':'application/vnd.github+json'}
@@ -2045,6 +2047,11 @@ function initLocal(){
   pollStatus();
   setInterval(pollStatus, 5000);
   setInterval(function(){ if(!document.hidden) fetchHistory().catch(function(){}); }, 30000);
+  // 버전 표시 (즉시)
+  fetch('/api/version').then(function(r){return r.json();}).then(function(vd){
+    var fv=document.getElementById('footer-version');
+    if(fv&&vd.version) fv.textContent='v'+vd.version;
+  }).catch(function(){});
   // 업데이트 확인: 10초 후 1회 (시작 시 API 부하 분산)
   setTimeout(checkForUpdate, 10000);
 }
