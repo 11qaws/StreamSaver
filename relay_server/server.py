@@ -48,7 +48,7 @@ logger = logging.getLogger("Relay")
 WS_PORT        = int(os.getenv("WS_PORT", "8765"))
 IPC_PORT       = int(os.getenv("IPC_PORT", "8766"))
 WS_SECRET      = os.getenv("WS_SECRET", "")
-SERVER_VERSION = "1.2.5"
+SERVER_VERSION = "1.2.6"
 
 MAX_WS_CONNECTIONS = 100
 

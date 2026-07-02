@@ -123,10 +123,19 @@ def download_update(url: str, progress_cb: Optional[Callable[[int], None]] = Non
 
 
 def install_update(installer_path: str):
-    """인스톨러를 /VERYSILENT 모드로 실행 (UI 없음)."""
-    import subprocess
+    """인스톨러를 /VERYSILENT 모드로 실행, 완료 후 앱 미기동 시 재시작 보장."""
+    import subprocess, sys
     _NW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    app_exe = sys.executable  # 현재 EXE == 설치 후 새 버전 경로와 동일
+    # PowerShell wrapper: 인스톨러 완료 대기 → 앱이 안 뜨면 직접 기동
+    ps = (
+        f'Start-Process -FilePath "{installer_path}"'
+        f' -ArgumentList "/VERYSILENT","/NORESTART" -Wait;'
+        f'Start-Sleep 3;'
+        f'if (-not (Get-Process StreamSaver -EA SilentlyContinue))'
+        f'{{ Start-Process "{app_exe}" }}'
+    )
     subprocess.Popen(
-        [installer_path, "/VERYSILENT", "/NORESTART"],
+        ["powershell", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps],
         creationflags=_NW,
     )
